@@ -1054,11 +1054,19 @@
             return candidatosBase;
           };
 
-          if (tipoFuncao === 'semanaFimSemana') {
-            candidatos = candidatos.filter(m => {
+          const filtrarBloqueiosComoPreferencia = candidatosBase => {
+            if (tipoFuncao !== 'semanaFimSemana') return candidatosBase;
+
+            const candidatosSemBloqueio = candidatosBase.filter(m => {
               const bloqueadoAte = bloqueiosRotacao[chaveRotacao]?.[m.id];
               return !bloqueadoAte || chavePeriodoAtual > bloqueadoAte;
             });
+
+            return candidatosSemBloqueio.length > 0 ? candidatosSemBloqueio : candidatosBase;
+          };
+
+          if (tipoFuncao === 'semanaFimSemana') {
+            candidatos = filtrarBloqueiosComoPreferencia(candidatos);
           }
 
           if (tipoFuncao === 'semanaFimSemana'
@@ -1071,12 +1079,7 @@
             let candidatosComVermelhaConsecutiva = obterMilitaresParaEscala(col.funcao)
               .filter(m => podeSerEscalado(m, false, true));
 
-            if (tipoFuncao === 'semanaFimSemana') {
-              candidatosComVermelhaConsecutiva = candidatosComVermelhaConsecutiva.filter(m => {
-                const bloqueadoAte = bloqueiosRotacao[chaveRotacao]?.[m.id];
-                return !bloqueadoAte || chavePeriodoAtual > bloqueadoAte;
-              });
-            }
+            candidatosComVermelhaConsecutiva = filtrarBloqueiosComoPreferencia(candidatosComVermelhaConsecutiva);
 
             if (tipoFuncao === 'semanaFimSemana'
               && militaresAdiantadosRotacao[chaveRotacao]
@@ -1103,9 +1106,6 @@
 
           if (candidatos.length === 0) {
             let candidatosComIntervaloReduzido = obterMilitaresParaEscala(col.funcao).filter(m => {
-              if (tipoFuncao === 'semanaFimSemana'
-                && bloqueiosRotacao[chaveRotacao]?.[m.id]
-                && chavePeriodoAtual <= bloqueiosRotacao[chaveRotacao][m.id]) return false;
               if (!podeSerEscalado(m, true, aplicarRegraVermelha)) return false;
               const ultimosServicos = historicoServicos[m.id];
               const ultimaDataServico = ultimaDataServicoPorMilitar[m.id];
@@ -1114,6 +1114,7 @@
                 : Math.round((dataObj.getTime() - ultimaDataServico) / 86400000);
               return ultimosServicos.length > 0 && intervaloCalendario === 2;
             });
+            candidatosComIntervaloReduzido = filtrarBloqueiosComoPreferencia(candidatosComIntervaloReduzido);
             candidatosComIntervaloReduzido = filtrarMilitaresAdiantados(candidatosComIntervaloReduzido);
 
             if (candidatosComIntervaloReduzido.length > 0 && confirm(

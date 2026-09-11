@@ -687,6 +687,23 @@
       const ultimasDatasAnteriores = obterUltimasDatasServicos(escalaAnterior, tiposEscala);
       const ultimoMilitarPorRotacao = {};
       const ultimaDataServicoPorMilitar = {};
+      const pendenciasRotacao = {};
+      const militaresAdiantadosRotacao = {};
+      const bloqueiosRotacao = {};
+      const compensacoesAnteriores = escalaAnterior?.compensacoesRotacao
+        || escalaAnterior?.compensacoesFimSemana
+        || {};
+
+      const obterChavePeriodo = (data, ehFimDeSemana) => {
+        const inicio = new Date(data);
+        if (ehFimDeSemana) {
+          if (inicio.getDay() === 0) inicio.setDate(inicio.getDate() - 1);
+        } else {
+          const diasDesdeSegunda = inicio.getDay() === 0 ? 6 : inicio.getDay() - 1;
+          inicio.setDate(inicio.getDate() - diasDesdeSegunda);
+        }
+        return `${inicio.getFullYear()}-${String(inicio.getMonth() + 1).padStart(2, '0')}-${String(inicio.getDate()).padStart(2, '0')}`;
+      };
 
       estado.funcoes.forEach(funcao => {
         const ultimoMilitar = ultimosMilitaresPorFuncao[funcao];
@@ -697,6 +714,13 @@
         contadorEventosRotacao[`${funcao}:todos`] = 0;
         contadorEventosRotacao[`${funcao}:semana`] = 0;
         contadorEventosRotacao[`${funcao}:fimSemana`] = 0;
+        [`${funcao}:semana`, `${funcao}:fimSemana`].forEach(chaveRotacao => {
+          militaresAdiantadosRotacao[chaveRotacao] = new Set(compensacoesAnteriores[chaveRotacao]?.adiantados || []);
+          bloqueiosRotacao[chaveRotacao] = { ...(compensacoesAnteriores[chaveRotacao]?.bloqueios || {}) };
+          if (compensacoesAnteriores[chaveRotacao]?.pendente) {
+            pendenciasRotacao[chaveRotacao] = compensacoesAnteriores[chaveRotacao].pendente;
+          }
+        });
       });
 
       Object.entries(ultimosEventosAnteriores).forEach(([chaveRotacao, militares]) => {
@@ -738,7 +762,15 @@
           const chaveRotacao = tipoFuncao === 'semanaFimSemana'
             ? `${col.funcao}:${ehFimDeSemana ? 'fimSemana' : 'semana'}`
             : `${col.funcao}:todos`;
+          const chavePeriodoAtual = tipoFuncao === 'semanaFimSemana'
+            ? obterChavePeriodo(dataObj, ehFimDeSemana)
+            : null;
           const eventoRotacao = contadorEventosRotacao[chaveRotacao] + 1;
+          const militaresDaRotacao = obterMilitaresParaEscala(col.funcao);
+          const ultimoMilitar = ultimoMilitarPorRotacao[chaveRotacao];
+          const ultimoIndice = militaresDaRotacao.findIndex(militar => militar.id === ultimoMilitar);
+          const indiceProximo = ultimoIndice === -1 ? 0 : (ultimoIndice + 1) % militaresDaRotacao.length;
+          const proximoMilitarDaRotacao = militaresDaRotacao[indiceProximo];
 
           const podeSerEscalado = (militar, aceitarIntervaloReduzido = false) => {
             if (militar.funcao !== col.funcao) return false;
@@ -764,9 +796,42 @@
           };
 
           let candidatos = obterMilitaresParaEscala(col.funcao).filter(m => podeSerEscalado(m));
+          let adiantadosForamIgnorados = false;
+
+          if (tipoFuncao === 'semanaFimSemana') {
+            candidatos = candidatos.filter(m => {
+              const bloqueadoAte = bloqueiosRotacao[chaveRotacao]?.[m.id];
+              return !bloqueadoAte || chavePeriodoAtual > bloqueadoAte;
+            });
+          }
+
+          if (tipoFuncao === 'semanaFimSemana'
+            && militaresAdiantadosRotacao[chaveRotacao]
+            && militaresAdiantadosRotacao[chaveRotacao].size > 0) {
+            const candidatosSemAdiantados = candidatos.filter(m => !militaresAdiantadosRotacao[chaveRotacao].has(m.id));
+            candidatos = candidatosSemAdiantados;
+            adiantadosForamIgnorados = candidatosSemAdiantados.length > 0;
+          }
+
+          if (tipoFuncao === 'semanaFimSemana'
+            && pendenciasRotacao[chaveRotacao]) {
+            const militarPendente = candidatos.find(m => m.id === pendenciasRotacao[chaveRotacao]);
+            if (militarPendente) candidatos = [militarPendente];
+          }
+
+          if (tipoFuncao === 'semanaFimSemana'
+            && proximoMilitarDaRotacao
+            && !pendenciasRotacao[chaveRotacao]
+            && !candidatos.some(m => m.id === proximoMilitarDaRotacao.id)) {
+            pendenciasRotacao[chaveRotacao] = proximoMilitarDaRotacao.id;
+          }
 
           if (candidatos.length === 0) {
             const candidatosComIntervaloReduzido = obterMilitaresParaEscala(col.funcao).filter(m => {
+              if (tipoFuncao === 'semanaFimSemana'
+                && (militaresAdiantadosRotacao[chaveRotacao]?.has(m.id)
+                  || (bloqueiosRotacao[chaveRotacao]?.[m.id]
+                    && chavePeriodoAtual <= bloqueiosRotacao[chaveRotacao][m.id]))) return false;
               if (!podeSerEscalado(m, true)) return false;
               const ultimosServicos = historicoServicos[m.id];
               const ultimaDataServico = ultimaDataServicoPorMilitar[m.id];
@@ -812,7 +877,33 @@
 
             const escolhido = candidatos[0];
             novaEscala[dia][col.chave] = escolhido.id;
-            ultimoMilitarPorRotacao[chaveRotacao] = escolhido.id;
+            const militarEraPendente = pendenciasRotacao[chaveRotacao] === escolhido.id;
+            const militarEraProximo = proximoMilitarDaRotacao?.id === escolhido.id;
+            if (tipoFuncao === 'semanaFimSemana'
+              && !militarEraProximo
+              && !militarEraPendente) {
+              militaresAdiantadosRotacao[chaveRotacao].add(escolhido.id);
+            } else if (tipoFuncao === 'semanaFimSemana' && militarEraPendente) {
+              delete pendenciasRotacao[chaveRotacao];
+            }
+            if (tipoFuncao === 'semanaFimSemana'
+              && !militarEraProximo
+              && !militarEraPendente) {
+              const proximoPeriodo = new Date(dataObj);
+              const diasAteProximaRodada = ehFimDeSemana
+                ? (diaSemana === 6 ? 7 : 6)
+                : (8 - diaSemana);
+              proximoPeriodo.setDate(proximoPeriodo.getDate() + diasAteProximaRodada);
+              bloqueiosRotacao[chaveRotacao][escolhido.id] = obterChavePeriodo(proximoPeriodo, ehFimDeSemana);
+            }
+            if (tipoFuncao === 'semanaFimSemana'
+              && adiantadosForamIgnorados
+              && !militarEraPendente) {
+              militaresAdiantadosRotacao[chaveRotacao].clear();
+            }
+            if (militarEraProximo || tipoFuncao !== 'semanaFimSemana') {
+              ultimoMilitarPorRotacao[chaveRotacao] = escolhido.id;
+            }
             ultimoEventoPorMilitar[`${escolhido.id}:${chaveRotacao}`] = eventoRotacao;
             ultimaDataServicoPorMilitar[escolhido.id] = dataObj.getTime();
             historicoServicos[escolhido.id].push(dia);
@@ -831,7 +922,15 @@
         });
       }
 
-      estado.escala = { mesAno, tipos: tiposEscala, dados: novaEscala };
+      const compensacoesRotacao = {};
+      Object.keys(militaresAdiantadosRotacao).forEach(chave => {
+        compensacoesRotacao[chave] = {
+          adiantados: [...militaresAdiantadosRotacao[chave]],
+          bloqueios: bloqueiosRotacao[chave],
+          pendente: pendenciasRotacao[chave] || null
+        };
+      });
+      estado.escala = { mesAno, tipos: tiposEscala, dados: novaEscala, compensacoesRotacao };
       estado.escalas[mesAno] = estado.escala;
       salvarEstado();
       renderizarTabelaEscala();

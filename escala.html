@@ -869,6 +869,9 @@
       });
 
       Object.entries(ultimosEventosAnteriores).forEach(([chaveRotacao, militares]) => {
+        if (militares.length > 0) {
+          ultimoMilitarPorRotacao[chaveRotacao] = militares[militares.length - 1];
+        }
         militares.forEach(militarId => {
           ultimoEventoPorMilitar[`${militarId}:${chaveRotacao}`] = 0;
         });
@@ -1087,7 +1090,6 @@
               const contagemJusticaB = usarJusticaAnualPorCor
                 ? (contagemAnoGeracao[b.id]?.[col.funcao]?.[tipoContagemJustica] || 0)
                 : servicosB.length;
-
               const folgaA = servicosA.length > 0 ? dia - servicosA[servicosA.length - 1] : 99;
               const folgaB = servicosB.length > 0 ? dia - servicosB[servicosB.length - 1] : 99;
 
@@ -1354,7 +1356,7 @@
           : 'Esta vaga foi deixada sem militar por alteracao manual.';
         estado.escalas[estado.escala.mesAno] = estado.escala;
         salvarEstado();
-        renderizarResumoServicos();
+        renderizarTabelaEscala();
       }
     }
 

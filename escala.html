@@ -317,6 +317,9 @@
     if (!estado.diasEspeciais || typeof estado.diasEspeciais !== 'object') {
       estado.diasEspeciais = {};
     }
+    estado.militares.forEach(militar => {
+      if (militar.ativo === undefined) militar.ativo = true;
+    });
 
     estado.funcoes.forEach(funcao => {
       estado.militares
@@ -343,6 +346,26 @@
         tipos[funcao] = tipoAntigo;
         return tipos;
       }, {});
+    }
+
+    function obterEstruturaDaEscala(escala) {
+      if (escala?.estrutura?.funcoes && escala?.estrutura?.vagas) {
+        return escala.estrutura;
+      }
+      return { funcoes: estado.funcoes, vagas: estado.vagas };
+    }
+
+    function obterFuncaoDaChave(chave) {
+      const separador = chave.lastIndexOf(' #');
+      return separador === -1 ? chave : chave.slice(0, separador);
+    }
+
+    function escalaTemDiaVermelho(escala, data, dia) {
+      if (Array.isArray(escala?.diasVermelhos)) {
+        const dataStr = `${data.getFullYear()}-${String(data.getMonth() + 1).padStart(2, '0')}-${String(dia).padStart(2, '0')}`;
+        return escala.diasVermelhos.includes(dataStr);
+      }
+      return ehServicoVermelho(data);
     }
 
     function renderizarTiposEscala(tiposSalvos) {
@@ -456,11 +479,15 @@
       const nome = document.getElementById('militarNome').value.trim();
       const saram = document.getElementById('militarSaram').value.trim();
       const funcao = document.getElementById('militarFuncao').value;
+      if (estado.militares.some(militar => militar.saram === saram)) {
+        alert('Ja existe militar cadastrado com este SARAM.');
+        return;
+      }
 
       const maiorOrdem = estado.militares
         .filter(militar => militar.funcao === funcao)
         .reduce((maior, militar) => Math.max(maior, militar.ordem ?? -1), -1);
-      estado.militares.push({ id: Date.now().toString(), nome, saram, funcao, ordem: maiorOrdem + 1 });
+      estado.militares.push({ id: Date.now().toString(), nome, saram, funcao, ordem: maiorOrdem + 1, ativo: true });
       salvarEstado();
       document.getElementById('formMilitar').reset();
       renderizarMilitares();
@@ -468,10 +495,24 @@
     }
 
     function removerMilitar(id) {
-      estado.militares = estado.militares.filter(m => m.id !== id);
+      const militar = estado.militares.find(m => m.id === id);
+      if (!militar) return;
+      if (!confirm(`Inativar ${militar.nome} (${militar.saram})? Ele nao entrara em novas escalas, mas continuara aparecendo no historico.`)) return;
+      militar.ativo = false;
       salvarEstado();
       renderizarMilitares();
       renderizarSelectFuncoes();
+      renderizarResumoServicos();
+    }
+
+    function reativarMilitar(id) {
+      const militar = estado.militares.find(m => m.id === id);
+      if (!militar) return;
+      militar.ativo = true;
+      salvarEstado();
+      renderizarMilitares();
+      renderizarSelectFuncoes();
+      renderizarResumoServicos();
     }
 
     function obterMilitaresOrdenados(funcao) {
@@ -481,12 +522,12 @@
     }
 
     function obterMilitaresParaEscala(funcao) {
-      return obterMilitaresOrdenados(funcao).slice().reverse();
+      return obterMilitaresOrdenados(funcao).filter(militar => militar.ativo !== false).slice().reverse();
     }
 
     function moverMilitar(id, direcao) {
       const militar = estado.militares.find(item => item.id === id);
-      if (!militar) return;
+      if (!militar || militar.ativo === false) return;
 
       const militaresDaFuncao = obterMilitaresOrdenados(militar.funcao);
       const indiceAtual = militaresDaFuncao.findIndex(item => item.id === id);
@@ -505,7 +546,7 @@
 
     function promoverMilitar(id) {
       const militar = estado.militares.find(item => item.id === id);
-      if (!militar) return;
+      if (!militar || militar.ativo === false) return;
 
       const funcoesDisponiveis = estado.funcoes.filter(funcao => funcao !== militar.funcao);
       if (funcoesDisponiveis.length === 0) {
@@ -533,7 +574,7 @@
     function confirmarPromocao() {
       const militar = estado.militares.find(item => item.id === militarEmPromocaoId);
       const novaFuncao = document.getElementById('novaFuncaoPromocao').value;
-      if (!militar || !novaFuncao) {
+      if (!militar || militar.ativo === false || !novaFuncao) {
         fecharModalPromocao();
         return;
       }
@@ -556,7 +597,7 @@
       const funcoesExibidas = filtro ? [filtro] : estado.funcoes;
       tbody.innerHTML = funcoesExibidas.flatMap(funcao => obterMilitaresOrdenados(funcao).map((m, indice, militaresDaFuncao) => `
         <tr class="border-b hover:bg-gray-50">
-          <td class="p-2 font-medium">${m.nome}</td>
+          <td class="p-2 font-medium">${m.nome}${m.ativo === false ? ' <span class="ml-2 rounded bg-gray-200 px-2 py-0.5 text-xs text-gray-600">Inativo</span>' : ''}</td>
           <td class="p-2 text-gray-600">${m.saram}</td>
           <td class="p-2"><span class="bg-gray-200 text-gray-800 text-xs px-2 py-1 rounded">${m.funcao}</span></td>
           <td class="p-2 text-sm">${indice + 1} <span class="text-xs text-gray-500">(mais antigo primeiro)</span></td>
@@ -564,7 +605,7 @@
             <button onclick="moverMilitar('${m.id}', -1)" ${indice === 0 ? 'disabled' : ''} class="text-blue-600 hover:underline text-xs mr-2 disabled:text-gray-300">↑</button>
             <button onclick="moverMilitar('${m.id}', 1)" ${indice === militaresDaFuncao.length - 1 ? 'disabled' : ''} class="text-blue-600 hover:underline text-xs mr-2 disabled:text-gray-300">↓</button>
             <button onclick="promoverMilitar('${m.id}')" class="text-green-600 hover:underline text-xs mr-2">Promover</button>
-            <button onclick="removerMilitar('${m.id}')" class="text-red-600 hover:underline text-xs">Excluir</button>
+            <button onclick="${m.ativo === false ? `reativarMilitar('${m.id}')` : `removerMilitar('${m.id}')`}" class="${m.ativo === false ? 'text-green-600' : 'text-red-600'} hover:underline text-xs">${m.ativo === false ? 'Reativar' : 'Inativar'}</button>
           </td>
         </tr>
       `)).join('');
@@ -582,7 +623,7 @@
     function renderizarFuncoes() {
       const container = document.getElementById('listaFuncoesCadastradas');
       container.innerHTML = estado.funcoes.map(funcao => {
-        const quantidadeMilitares = estado.militares.filter(militar => militar.funcao === funcao).length;
+        const quantidadeMilitares = estado.militares.filter(militar => militar.funcao === funcao && militar.ativo !== false).length;
         return `
           <div class="flex items-center justify-between border rounded p-2 bg-gray-50">
             <span class="text-sm font-semibold">${funcao}</span>
@@ -612,7 +653,7 @@
     }
 
     function removerFuncao(funcao) {
-      if (estado.militares.some(militar => militar.funcao === funcao)) {
+      if (estado.militares.some(militar => militar.funcao === funcao && militar.ativo !== false)) {
         alert('Não é possível excluir uma função que possui militares cadastrados.');
         return;
       }
@@ -656,6 +697,10 @@
       const inicio = document.getElementById('indispInicio').value;
       const fim = document.getElementById('indispFim').value;
       const motivo = document.getElementById('indispMotivo').value.trim();
+      if (fim < inicio) {
+        alert('A data final nao pode ser anterior a data inicial.');
+        return;
+      }
 
       estado.indisponibilidades.push({ id: Date.now().toString(), militarId, inicio, fim, motivo });
       salvarEstado();
@@ -727,7 +772,7 @@
 
       Object.keys(escalaAnterior.dados).sort((a, b) => Number(a) - Number(b)).forEach(dia => {
         const dataObj = new Date(anoAnterior, mesAnterior - 1, Number(dia));
-        const ehFimDeSemana = ehServicoVermelho(dataObj);
+        const ehFimDeSemana = escalaTemDiaVermelho(escalaAnterior, dataObj, Number(dia));
 
         Object.entries(escalaAnterior.dados[dia]).forEach(([chave, militarId]) => {
           if (!militarId) return;
@@ -760,7 +805,7 @@
       const tiposAnteriores = tiposEscala || obterTiposEscalaDaEscala(escalaAnterior);
       Object.keys(escalaAnterior.dados).sort((a, b) => Number(a) - Number(b)).forEach(dia => {
         const dataObj = new Date(anoAnterior, mesAnterior - 1, Number(dia));
-        const ehFimDeSemana = ehServicoVermelho(dataObj);
+        const ehFimDeSemana = escalaTemDiaVermelho(escalaAnterior, dataObj, Number(dia));
 
         Object.entries(escalaAnterior.dados[dia]).forEach(([chave, militarId]) => {
           if (!militarId) return;
@@ -786,7 +831,7 @@
       const [anoAnterior, mesAnterior] = escalaAnterior.mesAno.split('-').map(Number);
       Object.keys(escalaAnterior.dados).sort((a, b) => Number(a) - Number(b)).forEach(dia => {
         const dataObj = new Date(anoAnterior, mesAnterior - 1, Number(dia));
-        const servicoVermelho = ehServicoVermelho(dataObj);
+        const servicoVermelho = escalaTemDiaVermelho(escalaAnterior, dataObj, Number(dia));
 
         Object.values(escalaAnterior.dados[dia]).forEach(militarId => {
           if (!militarId) return;
@@ -808,6 +853,8 @@
       let novaEscala = {};
       let substituicoes = {};
       let justificativas = {};
+      const estruturaGerada = { funcoes: [...estado.funcoes], vagas: { ...estado.vagas } };
+      const diasVermelhos = [];
       let historicoServicos = {}; 
       let diasDaSemanaServico = {}; 
       let contadorEventosRotacao = {};
@@ -850,7 +897,7 @@
         .filter(escala => escala.mesAno && escala.mesAno.slice(0, 4) === String(ano) && escala.mesAno < mesAno)
         .forEach(escala => obterContagemEscalaPorFuncao(escala, contagemAnoGeracao));
 
-      estado.funcoes.forEach(funcao => {
+      estruturaGerada.funcoes.forEach(funcao => {
         const ultimoMilitar = ultimosMilitaresPorFuncao[funcao];
         const tipoFuncao = tiposEscala[funcao] || 'corrida';
         ultimoMilitarPorRotacao[`${funcao}:todos`] = ultimoMilitar;
@@ -890,8 +937,8 @@
 
       // Mapeia posições/colunas por função
       let colunasVagas = [];
-      estado.funcoes.forEach(f => {
-        const qtd = estado.vagas[f] || 0;
+      estruturaGerada.funcoes.forEach(f => {
+        const qtd = estruturaGerada.vagas[f] || 0;
         for (let i = 0; i < qtd; i++) {
           colunasVagas.push({ funcao: f, indice: i + 1, chave: `${f} #${i + 1}` });
         }
@@ -903,6 +950,7 @@
         const diaSemana = dataObj.getDay(); 
         const ehFimDeSemana = diaSemana === 0 || diaSemana === 6;
         const servicoVermelho = ehServicoVermelho(dataObj);
+        if (servicoVermelho) diasVermelhos.push(dataStr);
 
         novaEscala[dia] = {};
         substituicoes[dia] = {};
@@ -1229,7 +1277,7 @@
           pendente: pendenciasRotacao[chave] || null
         };
       });
-      estado.escala = { mesAno, tipos: tiposEscala, dados: novaEscala, substituicoes, justificativas, compensacoesRotacao };
+      estado.escala = { mesAno, tipos: tiposEscala, estrutura: estruturaGerada, diasVermelhos, dados: novaEscala, substituicoes, justificativas, compensacoesRotacao };
       estado.escalas[mesAno] = estado.escala;
       salvarEstado();
       renderizarTabelaEscala();
@@ -1254,12 +1302,13 @@
 
       const [ano, mes] = mesAno.split('-').map(Number);
       const diasNoMes = new Date(ano, mes, 0).getDate();
+      const estruturaEscala = obterEstruturaDaEscala(estado.escala);
       const diasSemanaNomes = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'];
 
       // Monta colunas conforme a estrutura de vagas
       let colunasVagas = [];
-      estado.funcoes.forEach(f => {
-        const qtd = estado.vagas[f] || 0;
+      estruturaEscala.funcoes.forEach(f => {
+        const qtd = estruturaEscala.vagas[f] || 0;
         for (let i = 0; i < qtd; i++) {
           colunasVagas.push({ funcao: f, chave: `${f} #${i + 1}` });
         }
@@ -1277,7 +1326,7 @@
       for (let dia = 1; dia <= diasNoMes; dia++) {
         const dataObj = new Date(ano, mes - 1, dia);
         const nomeDiaSemana = diasSemanaNomes[dataObj.getDay()];
-        const isFimDeSemana = ehServicoVermelho(dataObj);
+        const isFimDeSemana = escalaTemDiaVermelho(estado.escala, dataObj, dia);
 
         htmlCorpo += `<tr class="${isFimDeSemana ? 'bg-amber-50' : 'hover:bg-gray-50'}">`;
         htmlCorpo += `<td class="border p-2 text-center font-bold">${dia}</td>`;
@@ -1289,8 +1338,8 @@
           
           // Dropdown de edição manual
           const opcoes = estado.militares
-            .filter(m => m.funcao === col.funcao)
-            .map(m => `<option value="${m.id}" ${m.id === militarIdEscalado ? 'selected' : ''}>${m.nome} (${m.saram})</option>`)
+            .filter(m => m.funcao === col.funcao && (m.ativo !== false || m.id === militarIdEscalado))
+            .map(m => `<option value="${m.id}" ${m.id === militarIdEscalado ? 'selected' : ''}>${m.nome} (${m.saram})${m.ativo === false ? ' - inativo' : ''}</option>`)
             .join('');
           const militarEscalado = estado.militares.find(m => m.id === militarIdEscalado);
           const textoBotaoJustificativa = militarEscalado
@@ -1342,8 +1391,115 @@
       alert('Nao ha militar escalado nesta vaga.');
     }
 
+    function analisarViolacoesAlteracaoManual(dia, chaveColuna, militarId) {
+      if (!militarId || !estado.escala?.mesAno) return [];
+
+      const violacoes = [];
+      const militar = estado.militares.find(m => m.id === militarId);
+      if (!militar) return ['militar nao encontrado no cadastro'];
+
+      const [ano, mes] = estado.escala.mesAno.split('-').map(Number);
+      const dataStr = `${ano}-${String(mes).padStart(2, '0')}-${String(dia).padStart(2, '0')}`;
+      const dataAtual = new Date(ano, mes - 1, Number(dia));
+      const funcao = obterFuncaoDaChave(chaveColuna);
+      const tiposEscala = obterTiposEscalaDaEscala(estado.escala);
+      const servicoVermelhoAtual = escalaTemDiaVermelho(estado.escala, dataAtual, Number(dia));
+      const formatarData = data => data.toLocaleDateString('pt-BR');
+
+      if (militar.funcao !== funcao) {
+        violacoes.push('militar pertence a outra funcao');
+      }
+
+      if (estado.indisponibilidades.some(i => i.militarId === militarId && dataStr >= i.inicio && dataStr <= i.fim)) {
+        violacoes.push('militar indisponivel nesta data');
+      }
+
+      const escaladosNoDia = Object.entries(estado.escala.dados?.[dia] || {})
+        .filter(([chave, id]) => chave !== chaveColuna && id === militarId);
+      if (escaladosNoDia.length > 0) {
+        violacoes.push('mesma pessoa duas vezes no mesmo dia');
+      }
+
+      const servicos = [];
+      Object.values(estado.escalas).forEach(escala => {
+        if (!escala?.dados || !escala.mesAno) return;
+        const escalaAnalise = escala.mesAno === estado.escala.mesAno ? estado.escala : escala;
+        const [anoEscala, mesEscala] = escalaAnalise.mesAno.split('-').map(Number);
+
+        Object.entries(escalaAnalise.dados).forEach(([diaEscala, vagas]) => {
+          Object.entries(vagas).forEach(([chave, idSalvo]) => {
+            const idConsiderado = escalaAnalise.mesAno === estado.escala.mesAno
+              && Number(diaEscala) === Number(dia)
+              && chave === chaveColuna
+                ? militarId
+                : idSalvo;
+            if (idConsiderado !== militarId) return;
+
+            const dataServico = new Date(anoEscala, mesEscala - 1, Number(diaEscala));
+            servicos.push({
+              data: dataServico,
+              tempo: dataServico.getTime(),
+              vermelho: escalaTemDiaVermelho(escalaAnalise, dataServico, Number(diaEscala)),
+              mesmaVagaEditada: escalaAnalise.mesAno === estado.escala.mesAno
+                && Number(diaEscala) === Number(dia)
+                && chave === chaveColuna
+            });
+          });
+        });
+      });
+
+      if (!estado.escalas[estado.escala.mesAno]) {
+        servicos.push({
+          data: dataAtual,
+          tempo: dataAtual.getTime(),
+          vermelho: servicoVermelhoAtual,
+          mesmaVagaEditada: true
+        });
+      }
+
+      const servicosUnicos = servicos
+        .sort((a, b) => a.tempo - b.tempo)
+        .filter((servico, indice, lista) => indice === 0
+          || servico.tempo !== lista[indice - 1].tempo
+          || servico.mesmaVagaEditada
+          || lista[indice - 1].mesmaVagaEditada);
+
+      servicosUnicos.forEach(servico => {
+        if (servico.mesmaVagaEditada) return;
+        const diferencaDias = Math.abs(Math.round((dataAtual.getTime() - servico.tempo) / 86400000));
+        if (diferencaDias === 1) {
+          violacoes.push(`dias consecutivos com ${formatarData(servico.data)}`);
+        } else if (diferencaDias === 2) {
+          violacoes.push(`apenas 1 dia de intervalo em relacao a ${formatarData(servico.data)}`);
+        }
+      });
+
+      if (tiposEscala[funcao] === 'semanaFimSemana' && servicoVermelhoAtual) {
+        const anteriores = servicosUnicos.filter(servico => servico.tempo < dataAtual.getTime());
+        const posteriores = servicosUnicos.filter(servico => servico.tempo > dataAtual.getTime());
+        const anterior = anteriores[anteriores.length - 1];
+        const posterior = posteriores[0];
+        if (anterior?.vermelho) {
+          violacoes.push(`servico vermelho seguido apos ${formatarData(anterior.data)}`);
+        }
+        if (posterior?.vermelho) {
+          violacoes.push(`servico vermelho seguido antes de ${formatarData(posterior.data)}`);
+        }
+      }
+
+      return [...new Set(violacoes)];
+    }
+
     function atualizarEscalaManual(dia, chaveColuna, militarId) {
       if (estado.escala.dados && estado.escala.dados[dia]) {
+        const violacoes = analisarViolacoesAlteracaoManual(dia, chaveColuna, militarId);
+        if (violacoes.length > 0) {
+          const mensagem = `ATENCAO: Esta alteracao viola ${violacoes.length} regra(s):\n\n- ${violacoes.join('\n- ')}\n\nDeseja manter mesmo assim?`;
+          if (!confirm(mensagem)) {
+            renderizarTabelaEscala();
+            return;
+          }
+        }
         estado.escala.dados[dia][chaveColuna] = militarId;
         if (estado.escala.substituicoes?.[dia]) {
           delete estado.escala.substituicoes[dia][chaveColuna];
@@ -1401,13 +1557,14 @@
         || Boolean(estado.diasEspeciais?.[dataStr]);
     }
 
-    function obterContagemEscala(escala, contagem) {
+    function obterContagemEscala(escala, contagem, filtroFuncao = '') {
       if (!escala || !escala.dados || !escala.mesAno) return;
       const [ano, mes] = escala.mesAno.split('-').map(Number);
       Object.entries(escala.dados).forEach(([dia, vagas]) => {
         const data = new Date(ano, mes - 1, Number(dia));
-        const cor = ehServicoVermelho(data) ? 'vermelho' : 'preto';
-        Object.values(vagas).forEach(militarId => {
+        const cor = escalaTemDiaVermelho(escala, data, Number(dia)) ? 'vermelho' : 'preto';
+        Object.entries(vagas).forEach(([chave, militarId]) => {
+          if (filtroFuncao && obterFuncaoDaChave(chave) !== filtroFuncao) return;
           if (!militarId || !contagem[militarId]) return;
           contagem[militarId][cor]++;
         });
@@ -1419,11 +1576,10 @@
       const [ano, mes] = escala.mesAno.split('-').map(Number);
       Object.entries(escala.dados).forEach(([dia, vagas]) => {
         const data = new Date(ano, mes - 1, Number(dia));
-        const cor = ehServicoVermelho(data) ? 'vermelho' : 'preto';
+        const cor = escalaTemDiaVermelho(escala, data, Number(dia)) ? 'vermelho' : 'preto';
         Object.entries(vagas).forEach(([chave, militarId]) => {
           if (!militarId || !contagem[militarId]) return;
-          const separador = chave.lastIndexOf(' #');
-          const funcao = separador === -1 ? chave : chave.slice(0, separador);
+          const funcao = obterFuncaoDaChave(chave);
           if (!contagem[militarId][funcao]) contagem[militarId][funcao] = { preto: 0, vermelho: 0 };
           contagem[militarId][funcao][cor]++;
         });
@@ -1438,22 +1594,27 @@
       const contagemMes = Object.fromEntries(estado.militares.map(m => [m.id, { preto: 0, vermelho: 0 }]));
       const contagemAno = Object.fromEntries(estado.militares.map(m => [m.id, { preto: 0, vermelho: 0 }]));
 
-      if (mesSelecionado && estado.escalas[mesSelecionado]) obterContagemEscala(estado.escalas[mesSelecionado], contagemMes);
+      if (mesSelecionado && estado.escalas[mesSelecionado]) obterContagemEscala(estado.escalas[mesSelecionado], contagemMes, filtro);
       if (mesSelecionado) {
         const anoSelecionado = mesSelecionado.slice(0, 4);
         Object.values(estado.escalas)
           .filter(escala => escala.mesAno && escala.mesAno.slice(0, 4) === anoSelecionado && escala.mesAno <= mesSelecionado)
-          .forEach(escala => obterContagemEscala(escala, contagemAno));
+          .forEach(escala => obterContagemEscala(escala, contagemAno, filtro));
       }
 
-      corpo.innerHTML = estado.militares.filter(militar => !filtro || militar.funcao === filtro).map(militar => {
+      corpo.innerHTML = estado.militares.filter(militar => {
+        if (!filtro) return true;
+        const mes = contagemMes[militar.id] || { preto: 0, vermelho: 0 };
+        const ano = contagemAno[militar.id] || { preto: 0, vermelho: 0 };
+        return militar.funcao === filtro || mes.preto + mes.vermelho + ano.preto + ano.vermelho > 0;
+      }).map(militar => {
         const mes = contagemMes[militar.id];
         const ano = contagemAno[militar.id];
         const totalMes = mes.preto + mes.vermelho;
         const totalAno = ano.preto + ano.vermelho;
         return `<tr class="border-b hover:bg-gray-50">
           <td class="p-2 font-medium">${militar.nome} (${militar.saram})</td>
-          <td class="p-2 text-gray-600">${militar.funcao}</td>
+          <td class="p-2 text-gray-600">${filtro || militar.funcao}${militar.ativo === false ? ' (inativo)' : ''}</td>
           <td class="p-2 text-center">${mes.preto}</td>
           <td class="p-2 text-center text-red-600">${mes.vermelho}</td>
           <td class="p-2 text-center font-bold">${totalMes}</td>
@@ -1533,6 +1694,9 @@
             escala: dados.escala,
             escalas: dados.escalas
           };
+          estado.militares.forEach(militar => {
+            if (militar.ativo === undefined) militar.ativo = true;
+          });
           salvarEstado();
           renderizarSelectFuncoes();
           renderizarMilitares();

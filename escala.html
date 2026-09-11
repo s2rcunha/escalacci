@@ -374,6 +374,36 @@
       renderizarMilitares();
     }
 
+    function promoverMilitar(id) {
+      const militar = estado.militares.find(item => item.id === id);
+      if (!militar) return;
+
+      const funcoesDisponiveis = estado.funcoes.filter(funcao => funcao !== militar.funcao);
+      if (funcoesDisponiveis.length === 0) {
+        alert('Não há outra função cadastrada para promover este militar.');
+        return;
+      }
+
+      const escolha = prompt(`Função atual: ${militar.funcao}\nDigite o nome da nova função:\n\n${funcoesDisponiveis.join('\n')}`);
+      if (escolha === null) return;
+
+      const novaFuncao = funcoesDisponiveis.find(funcao => funcao.toLowerCase() === escolha.trim().toLowerCase());
+      if (!novaFuncao) {
+        alert('Função inválida. A promoção não foi realizada.');
+        return;
+      }
+
+      const maiorOrdem = estado.militares
+        .filter(item => item.funcao === novaFuncao)
+        .reduce((maior, item) => Math.max(maior, item.ordem ?? -1), -1);
+      militar.funcao = novaFuncao;
+      militar.ordem = maiorOrdem + 1;
+      salvarEstado();
+      renderizarMilitares();
+      renderizarSelectFuncoes();
+      renderizarFuncoes();
+    }
+
     function renderizarMilitares() {
       const tbody = document.getElementById('tabelaMilitares');
       const filtro = document.getElementById('filtroFuncaoMilitares')?.value || '';
@@ -387,6 +417,7 @@
           <td class="p-2 text-right">
             <button onclick="moverMilitar('${m.id}', -1)" ${indice === 0 ? 'disabled' : ''} class="text-blue-600 hover:underline text-xs mr-2 disabled:text-gray-300">↑</button>
             <button onclick="moverMilitar('${m.id}', 1)" ${indice === militaresDaFuncao.length - 1 ? 'disabled' : ''} class="text-blue-600 hover:underline text-xs mr-2 disabled:text-gray-300">↓</button>
+            <button onclick="promoverMilitar('${m.id}')" class="text-green-600 hover:underline text-xs mr-2">Promover</button>
             <button onclick="removerMilitar('${m.id}')" class="text-red-600 hover:underline text-xs">Excluir</button>
           </td>
         </tr>

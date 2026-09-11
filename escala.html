@@ -115,6 +115,21 @@
           </tbody>
         </table>
       </div>
+
+      <div id="modalPromocao" class="hidden fixed inset-0 z-50 items-center justify-center bg-black bg-opacity-40 p-4">
+        <div class="w-full max-w-md rounded bg-white p-5 shadow-lg">
+          <h3 class="mb-3 text-lg font-bold">Promover militar</h3>
+          <p id="militarPromocaoDescricao" class="mb-3 text-sm text-gray-600"></p>
+          <label class="mb-4 block text-sm font-semibold text-gray-700">
+            Nova função
+            <select id="novaFuncaoPromocao" class="mt-1 w-full rounded border p-2 text-sm"></select>
+          </label>
+          <div class="flex justify-end gap-2">
+            <button onclick="fecharModalPromocao()" class="rounded bg-gray-200 px-4 py-2 text-sm font-semibold text-gray-700 hover:bg-gray-300">Cancelar</button>
+            <button onclick="confirmarPromocao()" class="rounded bg-green-600 px-4 py-2 text-sm font-semibold text-white hover:bg-green-700">Confirmar promoção</button>
+          </div>
+        </div>
+      </div>
     </section>
 
     <!-- ABA 2: GESTÃO DE MILITARES -->
@@ -374,6 +389,8 @@
       renderizarMilitares();
     }
 
+    let militarEmPromocaoId = null;
+
     function promoverMilitar(id) {
       const militar = estado.militares.find(item => item.id === id);
       if (!militar) return;
@@ -384,12 +401,28 @@
         return;
       }
 
-      const escolha = prompt(`Função atual: ${militar.funcao}\nDigite o nome da nova função:\n\n${funcoesDisponiveis.join('\n')}`);
-      if (escolha === null) return;
+      militarEmPromocaoId = id;
+      document.getElementById('militarPromocaoDescricao').textContent = `${militar.nome} (${militar.saram}) - função atual: ${militar.funcao}`;
+      document.getElementById('novaFuncaoPromocao').innerHTML = funcoesDisponiveis
+        .map(funcao => `<option value="${funcao}">${funcao}</option>`)
+        .join('');
+      const modal = document.getElementById('modalPromocao');
+      modal.classList.remove('hidden');
+      modal.classList.add('flex');
+    }
 
-      const novaFuncao = funcoesDisponiveis.find(funcao => funcao.toLowerCase() === escolha.trim().toLowerCase());
-      if (!novaFuncao) {
-        alert('Função inválida. A promoção não foi realizada.');
+    function fecharModalPromocao() {
+      const modal = document.getElementById('modalPromocao');
+      modal.classList.add('hidden');
+      modal.classList.remove('flex');
+      militarEmPromocaoId = null;
+    }
+
+    function confirmarPromocao() {
+      const militar = estado.militares.find(item => item.id === militarEmPromocaoId);
+      const novaFuncao = document.getElementById('novaFuncaoPromocao').value;
+      if (!militar || !novaFuncao) {
+        fecharModalPromocao();
         return;
       }
 
@@ -402,6 +435,7 @@
       renderizarMilitares();
       renderizarSelectFuncoes();
       renderizarFuncoes();
+      fecharModalPromocao();
     }
 
     function renderizarMilitares() {

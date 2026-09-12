@@ -1074,6 +1074,8 @@
           let indiceProximo = ultimoIndice === -1 ? 0 : (ultimoIndice + 1) % militaresDaRotacao.length;
           let proximoMilitarDaRotacao = militaresDaRotacao[indiceProximo];
           const militaresPuladosPorAdiantamento = [];
+          const militarEstaIndisponivel = militarId =>
+            estado.indisponibilidades.some(i => i.militarId === militarId && dataStr >= i.inicio && dataStr <= i.fim);
 
           if (tipoFuncao === 'semanaFimSemana') {
             let seguranca = 0;
@@ -1100,7 +1102,7 @@
             if (militar.funcao !== col.funcao) return false;
 
             // 1. Checa Indisponibilidade
-            const indisp = estado.indisponibilidades.some(i => i.militarId === militar.id && dataStr >= i.inicio && dataStr <= i.fim);
+            const indisp = militarEstaIndisponivel(militar.id);
             if (indisp) return false;
 
             // 2. Checa Regra de Intervalo (sem serviço consecutivo)
@@ -1124,7 +1126,7 @@
             const motivos = [];
             if (!militar) return motivos;
 
-            const indisp = estado.indisponibilidades.some(i => i.militarId === militar.id && dataStr >= i.inicio && dataStr <= i.fim);
+            const indisp = militarEstaIndisponivel(militar.id);
             if (indisp) motivos.push('estava indisponivel nesta data');
 
             const ultimaDataServico = ultimaDataServicoPorMilitar[militar.id];
@@ -1219,13 +1221,15 @@
 
           if (tipoFuncao === 'semanaFimSemana'
             && pendenciasRotacao[chaveRotacao]) {
-            const militarPendente = candidatos.find(m => m.id === pendenciasRotacao[chaveRotacao]);
+            const pendenteId = pendenciasRotacao[chaveRotacao];
+            const militarPendente = candidatos.find(m => m.id === pendenteId);
             if (militarPendente) candidatos = [militarPendente];
           }
 
           if (tipoFuncao === 'semanaFimSemana'
             && proximoMilitarDaRotacao
             && !pendenciasRotacao[chaveRotacao]
+            && !militarEstaIndisponivel(proximoMilitarDaRotacao.id)
             && !candidatos.some(m => m.id === proximoMilitarDaRotacao.id)) {
             pendenciasRotacao[chaveRotacao] = proximoMilitarDaRotacao.id;
           }
@@ -1329,6 +1333,9 @@
             } else if (proximoMilitarDaRotacao) {
               if (motivosProximo.length) {
                 explicacao.push(`O proximo da rotacao nao foi escalado porque ${motivosProximo.join('; ')}.`);
+                if (motivosProximo.includes('estava indisponivel nesta data')) {
+                  explicacao.push('Indisponibilidade cadastrada nao gera pendencia nem servico atrasado para compensar depois.');
+                }
                 explicacao.push('Por isso, o sistema avancou na lista e escolheu o primeiro candidato valido conforme a rotacao e os criterios de equilibrio.');
               } else {
                 explicacao.push(tipoFuncao === 'semanaFimSemana'

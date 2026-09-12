@@ -128,7 +128,7 @@
         <div class="text-center mb-4">
           <h2 class="text-xl font-bold uppercase" id="tituloEscala">Escala de Serviço - Célula Contraincêndio</h2>
           <p class="text-xs text-gray-500" id="subtituloEscala"></p>
-          <p class="text-xs font-bold text-yellow-800">Célula amarela: militar escalado automaticamente no lugar de outro por causa das regras</p>
+          <p class="legenda-substituicao text-xs font-bold text-yellow-800">Célula amarela: militar escalado automaticamente no lugar de outro por causa das regras</p>
         </div>
         <table class="w-full border-collapse border border-gray-300 text-xs">
           <thead>
@@ -293,10 +293,19 @@
       'Rádio Operador'
     ];
 
+    function lerLocalStorageJSON(chave, padrao) {
+      try {
+        const valor = localStorage.getItem(chave);
+        return valor ? JSON.parse(valor) : padrao;
+      } catch (erro) {
+        return padrao;
+      }
+    }
+
     let estado = {
-      funcoes: JSON.parse(localStorage.getItem('cci_funcoes')) || [...FUNCOES_PADRAO],
-      militares: JSON.parse(localStorage.getItem('cci_militares')) || [],
-      vagas: JSON.parse(localStorage.getItem('cci_vagas')) || {
+      funcoes: lerLocalStorageJSON('cci_funcoes', [...FUNCOES_PADRAO]),
+      militares: lerLocalStorageJSON('cci_militares', []),
+      vagas: lerLocalStorageJSON('cci_vagas', {
         'Chefe de Equipe': 1,
         'Motorista Especial': 1,
         'Motorista Apoio': 1,
@@ -304,12 +313,106 @@
         'Resgatista': 1,
         'Combatente': 2,
         'Rádio Operador': 1
-      },
-      indisponibilidades: JSON.parse(localStorage.getItem('cci_indisponibilidades')) || [],
-      diasEspeciais: JSON.parse(localStorage.getItem('cci_dias_especiais')) || {},
-      escala: JSON.parse(localStorage.getItem('cci_escala')) || {},
-      escalas: JSON.parse(localStorage.getItem('cci_escalas')) || {}
+      }),
+      indisponibilidades: lerLocalStorageJSON('cci_indisponibilidades', []),
+      diasEspeciais: lerLocalStorageJSON('cci_dias_especiais', {}),
+      escala: lerLocalStorageJSON('cci_escala', {}),
+      escalas: lerLocalStorageJSON('cci_escalas', {})
     };
+
+    const DB_NOME = 'cci_escala_db';
+    const DB_VERSAO = 1;
+    const DB_STORE = 'dados';
+    const DB_CHAVE_ESTADO = 'estado_principal';
+
+    function abrirBancoDados() {
+      return new Promise((resolve, reject) => {
+        const requisicao = indexedDB.open(DB_NOME, DB_VERSAO);
+        requisicao.onupgradeneeded = evento => {
+          const banco = evento.target.result;
+          if (!banco.objectStoreNames.contains(DB_STORE)) {
+            banco.createObjectStore(DB_STORE);
+          }
+        };
+        requisicao.onsuccess = () => resolve(requisicao.result);
+        requisicao.onerror = () => reject(requisicao.error);
+      });
+    }
+
+    async function lerEstadoIndexedDB() {
+      const banco = await abrirBancoDados();
+      return new Promise((resolve, reject) => {
+        const transacao = banco.transaction(DB_STORE, 'readonly');
+        const store = transacao.objectStore(DB_STORE);
+        const requisicao = store.get(DB_CHAVE_ESTADO);
+        requisicao.onsuccess = () => resolve(requisicao.result || null);
+        requisicao.onerror = () => reject(requisicao.error);
+        transacao.oncomplete = () => banco.close();
+        transacao.onerror = () => {
+          banco.close();
+          reject(transacao.error);
+        };
+      });
+    }
+
+    async function gravarEstadoIndexedDB(dados) {
+      const banco = await abrirBancoDados();
+      return new Promise((resolve, reject) => {
+        const transacao = banco.transaction(DB_STORE, 'readwrite');
+        const store = transacao.objectStore(DB_STORE);
+        store.put(dados, DB_CHAVE_ESTADO);
+        transacao.oncomplete = () => {
+          banco.close();
+          resolve();
+        };
+        transacao.onerror = () => {
+          banco.close();
+          reject(transacao.error);
+        };
+      });
+    }
+
+    function normalizarEstadoAtual() {
+      if (!Array.isArray(estado.funcoes)) estado.funcoes = [...FUNCOES_PADRAO];
+      if (!Array.isArray(estado.militares)) estado.militares = [];
+      if (!estado.vagas || typeof estado.vagas !== 'object') estado.vagas = {};
+      if (!Array.isArray(estado.indisponibilidades)) estado.indisponibilidades = [];
+      if (!estado.diasEspeciais || typeof estado.diasEspeciais !== 'object') estado.diasEspeciais = {};
+      if (!estado.escala || typeof estado.escala !== 'object') estado.escala = {};
+      if (!estado.escalas || typeof estado.escalas !== 'object') estado.escalas = {};
+
+      if (estado.escala.mesAno && !estado.escalas[estado.escala.mesAno]) {
+        estado.escalas[estado.escala.mesAno] = estado.escala;
+      }
+      estado.militares.forEach(militar => {
+        if (militar.ativo === undefined) militar.ativo = true;
+      });
+
+      estado.funcoes.forEach(funcao => {
+        estado.militares
+          .filter(militar => militar.funcao === funcao)
+          .forEach((militar, indice) => {
+            if (!Number.isInteger(militar.ordem)) militar.ordem = indice;
+          });
+      });
+    }
+
+    async function carregarEstado() {
+      try {
+        const estadoSalvo = await lerEstadoIndexedDB();
+        if (estadoSalvo) {
+          estado = estadoSalvo;
+          normalizarEstadoAtual();
+          return;
+        }
+
+        normalizarEstadoAtual();
+        await gravarEstadoIndexedDB(estado);
+      } catch (erro) {
+        normalizarEstadoAtual();
+        alert('Nao foi possivel acessar o IndexedDB deste navegador. Os dados podem nao ficar salvos.');
+      }
+    }
 
     // Migra a escala antiga para o histórico mensal sem perder os dados já salvos.
     if (estado.escala.mesAno && !estado.escalas[estado.escala.mesAno]) {
@@ -331,13 +434,10 @@
     });
 
     function salvarEstado() {
-      localStorage.setItem('cci_funcoes', JSON.stringify(estado.funcoes));
-      localStorage.setItem('cci_militares', JSON.stringify(estado.militares));
-      localStorage.setItem('cci_vagas', JSON.stringify(estado.vagas));
-      localStorage.setItem('cci_indisponibilidades', JSON.stringify(estado.indisponibilidades));
-      localStorage.setItem('cci_dias_especiais', JSON.stringify(estado.diasEspeciais));
-      localStorage.setItem('cci_escala', JSON.stringify(estado.escala));
-      localStorage.setItem('cci_escalas', JSON.stringify(estado.escalas));
+      return gravarEstadoIndexedDB(estado).catch(erro => {
+        console.error('Erro ao salvar dados no IndexedDB:', erro);
+        alert('Nao foi possivel salvar os dados no IndexedDB deste navegador.');
+      });
     }
 
     function obterTiposEscalaDaEscala(escala) {
@@ -437,7 +537,8 @@
       }).join('');
     }
 
-    function inicializar() {
+    async function inicializar() {
+      await carregarEstado();
       const mesAtual = new Date().toISOString().slice(0, 7);
       document.getElementById('mesAnoEscala').value = mesAtual;
       renderizarTiposEscala();
@@ -968,10 +1069,32 @@
             : null;
           const eventoRotacao = contadorEventosRotacao[chaveRotacao] + 1;
           const militaresDaRotacao = obterMilitaresParaEscala(col.funcao);
-          const ultimoMilitar = ultimoMilitarPorRotacao[chaveRotacao];
-          const ultimoIndice = militaresDaRotacao.findIndex(militar => militar.id === ultimoMilitar);
-          const indiceProximo = ultimoIndice === -1 ? 0 : (ultimoIndice + 1) % militaresDaRotacao.length;
-          const proximoMilitarDaRotacao = militaresDaRotacao[indiceProximo];
+          let ultimoMilitar = ultimoMilitarPorRotacao[chaveRotacao];
+          let ultimoIndice = militaresDaRotacao.findIndex(militar => militar.id === ultimoMilitar);
+          let indiceProximo = ultimoIndice === -1 ? 0 : (ultimoIndice + 1) % militaresDaRotacao.length;
+          let proximoMilitarDaRotacao = militaresDaRotacao[indiceProximo];
+          const militaresPuladosPorAdiantamento = [];
+
+          if (tipoFuncao === 'semanaFimSemana') {
+            let seguranca = 0;
+            while (proximoMilitarDaRotacao
+              && militaresAdiantadosRotacao[chaveRotacao]?.has(proximoMilitarDaRotacao.id)
+              && seguranca < militaresDaRotacao.length) {
+              const militarPulando = proximoMilitarDaRotacao;
+              militaresPuladosPorAdiantamento.push(militarPulando.id);
+              militaresAdiantadosRotacao[chaveRotacao].delete(militarPulando.id);
+              if (bloqueiosRotacao[chaveRotacao]) {
+                delete bloqueiosRotacao[chaveRotacao][militarPulando.id];
+              }
+
+              ultimoMilitarPorRotacao[chaveRotacao] = militarPulando.id;
+              ultimoMilitar = militarPulando.id;
+              ultimoIndice = militaresDaRotacao.findIndex(militar => militar.id === ultimoMilitar);
+              indiceProximo = (ultimoIndice + 1) % militaresDaRotacao.length;
+              proximoMilitarDaRotacao = militaresDaRotacao[indiceProximo];
+              seguranca++;
+            }
+          }
 
           const podeSerEscalado = (militar, aceitarIntervaloReduzido = false, aceitarVermelhaConsecutiva = false) => {
             if (militar.funcao !== col.funcao) return false;
@@ -1047,7 +1170,9 @@
               return candidatosBase;
             }
 
-            const candidatosSemAdiantados = candidatosBase.filter(m => !militaresAdiantadosRotacao[chaveRotacao].has(m.id));
+            const candidatosSemAdiantados = candidatosBase.filter(m => {
+              return !militaresAdiantadosRotacao[chaveRotacao].has(m.id);
+            });
             if (candidatosSemAdiantados.length > 0) {
               return candidatosSemAdiantados;
             }
@@ -1128,39 +1253,44 @@
           }
 
           if (candidatos.length > 0) {
-            // Pontuação para escolher o militar mais justo
-            candidatos.sort((a, b) => {
-              const servicosA = historicoServicos[a.id];
-              const servicosB = historicoServicos[b.id];
-              const usarJusticaAnualPorCor = tipoFuncao === 'semanaFimSemana';
-              const tipoContagemJustica = servicoVermelho ? 'vermelho' : 'preto';
-              const contagemJusticaA = usarJusticaAnualPorCor
-                ? (contagemAnoGeracao[a.id]?.[col.funcao]?.[tipoContagemJustica] || 0)
-                : servicosA.length;
-              const contagemJusticaB = usarJusticaAnualPorCor
-                ? (contagemAnoGeracao[b.id]?.[col.funcao]?.[tipoContagemJustica] || 0)
-                : servicosB.length;
-              const folgaA = servicosA.length > 0 ? dia - servicosA[servicosA.length - 1] : 99;
-              const folgaB = servicosB.length > 0 ? dia - servicosB[servicosB.length - 1] : 99;
-
-              const repDiaSemanaA = diasDaSemanaServico[a.id][diaSemana] || 0;
-              const repDiaSemanaB = diasDaSemanaServico[b.id][diaSemana] || 0;
-
-              // Score: Prioriza maior folga, menor total de serviços e menor repetição no dia da semana
-              const scoreA = (folgaA * 10) - (contagemJusticaA * 15) - (repDiaSemanaA * 20);
-              const scoreB = (folgaB * 10) - (contagemJusticaB * 15) - (repDiaSemanaB * 20);
-              const diferencaServicos = contagemJusticaA - contagemJusticaB;
-              if (usarJusticaAnualPorCor && diferencaServicos !== 0) return diferencaServicos;
-
+            const tipoContagemJustica = servicoVermelho ? 'vermelho' : 'preto';
+            const usarJusticaAnualPorCor = tipoFuncao === 'semanaFimSemana';
+            const obterDadosCandidato = militar => {
+              const servicos = historicoServicos[militar.id];
+              const contagemJustica = usarJusticaAnualPorCor
+                ? (contagemAnoGeracao[militar.id]?.[col.funcao]?.[tipoContagemJustica] || 0)
+                : servicos.length;
+              const folga = servicos.length > 0 ? dia - servicos[servicos.length - 1] : 99;
+              const repeticoesDiaSemana = diasDaSemanaServico[militar.id][diaSemana] || 0;
               const ultimoMilitar = ultimoMilitarPorRotacao[chaveRotacao];
               const militaresDaFuncao = obterMilitaresParaEscala(col.funcao);
               const ultimoIndice = militaresDaFuncao.findIndex(m => m.id === ultimoMilitar);
-              const indiceA = militaresDaFuncao.findIndex(m => m.id === a.id);
-              const indiceB = militaresDaFuncao.findIndex(m => m.id === b.id);
-              const distanciaA = ultimoIndice === -1 ? indiceA : (indiceA - ultimoIndice + militaresDaFuncao.length) % militaresDaFuncao.length;
-              const distanciaB = ultimoIndice === -1 ? indiceB : (indiceB - ultimoIndice + militaresDaFuncao.length) % militaresDaFuncao.length;
+              const indice = militaresDaFuncao.findIndex(m => m.id === militar.id);
+              const calcularDistanciaRotacao = indiceCandidato => {
+                if (ultimoIndice === -1) return indiceCandidato;
+                const distancia = (indiceCandidato - ultimoIndice + militaresDaFuncao.length) % militaresDaFuncao.length;
+                return distancia === 0 ? militaresDaFuncao.length : distancia;
+              };
+              return {
+                contagemJustica,
+                folga,
+                repeticoesDiaSemana,
+                distancia: calcularDistanciaRotacao(indice)
+              };
+            };
+            // Pontuação para escolher o militar mais justo
+            candidatos.sort((a, b) => {
+              const dadosA = obterDadosCandidato(a);
+              const dadosB = obterDadosCandidato(b);
 
-              return distanciaA - distanciaB || scoreB - scoreA;
+              // Score: Prioriza maior folga, menor total de serviços e menor repetição no dia da semana
+              const scoreA = (dadosA.folga * 10) - (dadosA.contagemJustica * 15) - (dadosA.repeticoesDiaSemana * 20);
+              const scoreB = (dadosB.folga * 10) - (dadosB.contagemJustica * 15) - (dadosB.repeticoesDiaSemana * 20);
+              if (dadosA.distancia !== dadosB.distancia) return dadosA.distancia - dadosB.distancia;
+              if (usarJusticaAnualPorCor && dadosA.contagemJustica !== dadosB.contagemJustica) {
+                return dadosA.contagemJustica - dadosB.contagemJustica;
+              }
+              return scoreB - scoreA;
             });
 
             const escolhido = candidatos[0];
@@ -1177,7 +1307,12 @@
               `Rotacao usada: ${tipoFuncao === 'semanaFimSemana' ? (servicoVermelho ? 'fim de semana/feriado' : 'dias uteis') : 'corrida'}.`
             ];
             if (tipoFuncao === 'semanaFimSemana') {
-              explicacao.push(`Criterio de justica usado nesta escolha: ano ${servicoVermelho ? 'vermelho' : 'preto'}.`);
+              explicacao.push(`Prioridade da escolha: sequencia da rotacao; em empate, ano ${servicoVermelho ? 'vermelho' : 'preto'}.`);
+            } else {
+              explicacao.push('Prioridade da escolha: sequencia da rotacao; em empate, total de servicos no mes.');
+            }
+            if (militaresPuladosPorAdiantamento.length > 0) {
+              explicacao.push(`Militares pulados por ja terem cumprido esta vez antecipadamente: ${militaresPuladosPorAdiantamento.map(obterNomeMilitar).join(', ')}.`);
             }
             if (ultimoMilitar) {
               explicacao.push(`Ultimo militar considerado nesta rotacao: ${obterNomeMilitar(ultimoMilitar)}.`);
@@ -1224,15 +1359,24 @@
             if (excecaoVermelhaConsecutiva && ultimoServicoFoiVermelhoPorMilitar[escolhido.id]) {
               substituicoes[dia][col.chave] = true;
             }
+            if (tipoFuncao === 'semanaFimSemana' && militarEraPendente) {
+              delete pendenciasRotacao[chaveRotacao];
+            }
             if (tipoFuncao === 'semanaFimSemana'
               && !militarEraProximo
               && !militarEraPendente
               && !militarJaEstavaAdiantado) {
               militaresAdiantadosRotacao[chaveRotacao].add(escolhido.id);
-            } else if (tipoFuncao === 'semanaFimSemana' && militarEraPendente) {
-              delete pendenciasRotacao[chaveRotacao];
+            } else if (tipoFuncao === 'semanaFimSemana' && militarEraProximo) {
+              militaresAdiantadosRotacao[chaveRotacao].delete(escolhido.id);
+              if (bloqueiosRotacao[chaveRotacao]) {
+                delete bloqueiosRotacao[chaveRotacao][escolhido.id];
+              }
             } else if (tipoFuncao === 'semanaFimSemana' && militarJaEstavaAdiantado) {
               militaresAdiantadosRotacao[chaveRotacao].delete(escolhido.id);
+              if (bloqueiosRotacao[chaveRotacao]) {
+                delete bloqueiosRotacao[chaveRotacao][escolhido.id];
+              }
             }
             if (tipoFuncao === 'semanaFimSemana'
               && !militarEraProximo
@@ -1245,7 +1389,7 @@
               proximoPeriodo.setDate(proximoPeriodo.getDate() + diasAteProximaRodada);
               bloqueiosRotacao[chaveRotacao][escolhido.id] = obterChavePeriodo(proximoPeriodo, servicoVermelho);
             }
-            if (militarEraProximo || tipoFuncao !== 'semanaFimSemana') {
+            if (militarEraProximo || militarEraPendente || tipoFuncao !== 'semanaFimSemana') {
               ultimoMilitarPorRotacao[chaveRotacao] = escolhido.id;
             }
             ultimoEventoPorMilitar[`${escolhido.id}:${chaveRotacao}`] = eventoRotacao;
@@ -1674,7 +1818,7 @@
       if (!arquivo) return;
 
       const leitor = new FileReader();
-      leitor.onload = function () {
+      leitor.onload = async function () {
         try {
           const backup = JSON.parse(leitor.result);
           const dados = backup.estado || backup;
@@ -1699,7 +1843,7 @@
           estado.militares.forEach(militar => {
             if (militar.ativo === undefined) militar.ativo = true;
           });
-          salvarEstado();
+          await salvarEstado();
           renderizarSelectFuncoes();
           renderizarMilitares();
           renderizarFuncoes();
@@ -1723,7 +1867,9 @@
       const elemento = document.getElementById('areaEscalaPDF');
       const copia = elemento.cloneNode(true);
       copia.classList.add('pdf-exportacao');
+      copia.querySelector('.legenda-substituicao')?.remove();
       copia.querySelectorAll('td').forEach(celula => {
+        celula.classList.remove('bg-yellow-200', 'font-bold');
         const seletor = celula.querySelector('select');
         const texto = celula.querySelector('.pdf-militar');
         if (!seletor || !texto) return;
@@ -1748,7 +1894,9 @@
     function exportarXLS() {
       const elemento = document.getElementById('areaEscalaPDF');
       const copia = elemento.cloneNode(true);
+      copia.querySelector('.legenda-substituicao')?.remove();
       copia.querySelectorAll('td').forEach(celula => {
+        celula.classList.remove('bg-yellow-200', 'font-bold');
         const seletor = celula.querySelector('select');
         const texto = celula.querySelector('.pdf-militar');
         if (!seletor || !texto) return;
@@ -1785,9 +1933,6 @@
               .xls-dia-vermelho td:first-child,
               .xls-dia-vermelho td:nth-child(2),
               .text-red-600 { color: #dc2626; font-weight: bold; }
-              .bg-yellow-200,
-              .xls-linha-branca td.bg-yellow-200,
-              .xls-linha-cinza td.bg-yellow-200 { background: #fef08a; font-weight: bold; }
               .xls-militar { white-space: normal; mso-data-placement:same-cell; line-height: 1.25; }
               .xls-saram { font-size: 10px; color: #555; font-weight: normal; }
             </style>

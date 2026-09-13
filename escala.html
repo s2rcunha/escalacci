@@ -266,7 +266,10 @@
     <section id="aba-indisponibilidades" class="aba-conteudo hidden space-y-4">
       <div class="bg-white p-4 rounded shadow-sm">
         <h3 class="font-bold text-lg mb-3">Cadastrar Indisponibilidade (Férias, Missões, Licenças)</h3>
-        <form id="formIndisponibilidade" onsubmit="salvarIndisponibilidade(event)" class="grid grid-cols-1 md:grid-cols-5 gap-3">
+        <form id="formIndisponibilidade" onsubmit="salvarIndisponibilidade(event)" class="grid grid-cols-1 md:grid-cols-6 gap-3">
+          <select id="indispFuncao" required onchange="renderizarMilitaresIndisponibilidade()" class="border p-2 rounded text-sm">
+            <option value="">Selecione a Função</option>
+          </select>
           <select id="indispMilitar" required class="border p-2 rounded text-sm">
             <option value="">Selecione o Militar</option>
           </select>
@@ -490,6 +493,9 @@
       }
       estado.militares.forEach(militar => {
         if (militar.ativo === undefined) militar.ativo = true;
+        if (!militar.contagemInicialServicos || typeof militar.contagemInicialServicos !== 'object') {
+          militar.contagemInicialServicos = {};
+        }
       });
 
       estado.funcoes.forEach(funcao => {
@@ -527,6 +533,9 @@
     }
     estado.militares.forEach(militar => {
       if (militar.ativo === undefined) militar.ativo = true;
+      if (!militar.contagemInicialServicos || typeof militar.contagemInicialServicos !== 'object') {
+        militar.contagemInicialServicos = {};
+      }
     });
 
     estado.funcoes.forEach(funcao => {
@@ -577,6 +586,74 @@
         return escala.diasVermelhos.includes(dataStr);
       }
       return ehServicoVermelho(data);
+    }
+
+    function normalizarNumeroContagem(valor) {
+      const numero = Number(valor);
+      return Number.isFinite(numero) && numero > 0 ? Math.floor(numero) : 0;
+    }
+
+    function obterContagemInicialFuncao(militar, funcao) {
+      const contagem = militar?.contagemInicialServicos?.[funcao] || {};
+      return {
+        preto: normalizarNumeroContagem(contagem.preto),
+        vermelho: normalizarNumeroContagem(contagem.vermelho)
+      };
+    }
+
+    function definirContagemInicialFuncao(militar, funcao, contagem) {
+      if (!militar.contagemInicialServicos || typeof militar.contagemInicialServicos !== 'object') {
+        militar.contagemInicialServicos = {};
+      }
+      militar.contagemInicialServicos[funcao] = {
+        preto: normalizarNumeroContagem(contagem.preto),
+        vermelho: normalizarNumeroContagem(contagem.vermelho)
+      };
+    }
+
+    function aplicarContagensIniciais(contagem, filtroFuncao = '') {
+      estado.militares.forEach(militar => {
+        if (!contagem[militar.id]) return;
+        Object.entries(militar.contagemInicialServicos || {}).forEach(([funcao, valores]) => {
+          if (filtroFuncao && funcao !== filtroFuncao) return;
+          contagem[militar.id].preto += normalizarNumeroContagem(valores.preto);
+          contagem[militar.id].vermelho += normalizarNumeroContagem(valores.vermelho);
+        });
+      });
+    }
+
+    function aplicarContagensIniciaisPorFuncao(contagem) {
+      estado.militares.forEach(militar => {
+        if (!contagem[militar.id]) return;
+        Object.entries(militar.contagemInicialServicos || {}).forEach(([funcao, valores]) => {
+          if (!contagem[militar.id][funcao]) contagem[militar.id][funcao] = { preto: 0, vermelho: 0 };
+          contagem[militar.id][funcao].preto += normalizarNumeroContagem(valores.preto);
+          contagem[militar.id][funcao].vermelho += normalizarNumeroContagem(valores.vermelho);
+        });
+      });
+    }
+
+    function obterMenorContagemAcumuladaFuncao(funcao, ignorarMilitarId = '') {
+      const militaresComparacao = estado.militares
+        .filter(militar => militar.funcao === funcao && militar.ativo !== false && militar.id !== ignorarMilitarId);
+
+      if (militaresComparacao.length === 0) return { preto: 0, vermelho: 0 };
+
+      const mesReferencia = document.getElementById('mesAnoEscala')?.value || '';
+      const contagem = Object.fromEntries(estado.militares.map(militar => [militar.id, { preto: 0, vermelho: 0 }]));
+      aplicarContagensIniciais(contagem, funcao);
+
+      Object.values(estado.escalas)
+        .filter(escala => escala.mesAno && (!mesReferencia || escala.mesAno <= mesReferencia))
+        .forEach(escala => obterContagemEscala(escala, contagem, funcao));
+
+      return militaresComparacao.reduce((menor, militar) => {
+        const atual = contagem[militar.id] || { preto: 0, vermelho: 0 };
+        return {
+          preto: Math.min(menor.preto, atual.preto),
+          vermelho: Math.min(menor.vermelho, atual.vermelho)
+        };
+      }, { preto: Infinity, vermelho: Infinity });
     }
 
     function contarMilitaresAtivosPorFuncao(funcao) {
@@ -704,11 +781,32 @@
       renderizarFiltroMilitares();
       renderizarFiltroResumo();
 
-      const selIndisp = document.getElementById('indispMilitar');
-      selIndisp.innerHTML = '<option value="">Selecione o Militar</option>';
-      estado.militares.forEach(m => {
-        selIndisp.innerHTML += `<option value="${m.id}">${m.nome} (${m.saram})</option>`;
-      });
+      renderizarFuncoesIndisponibilidade();
+    }
+
+    function renderizarFuncoesIndisponibilidade() {
+      const selFuncao = document.getElementById('indispFuncao');
+      if (!selFuncao) return;
+      const valorAtual = selFuncao.value;
+      selFuncao.innerHTML = '<option value="">Selecione a Função</option>'
+        + estado.funcoes.map(funcao => `<option value="${funcao}">${funcao}</option>`).join('');
+      selFuncao.value = estado.funcoes.includes(valorAtual) ? valorAtual : '';
+      renderizarMilitaresIndisponibilidade();
+    }
+
+    function renderizarMilitaresIndisponibilidade() {
+      const selFuncao = document.getElementById('indispFuncao');
+      const selMilitar = document.getElementById('indispMilitar');
+      if (!selMilitar) return;
+      const funcao = selFuncao?.value || '';
+      const valorAtual = selMilitar.value;
+      const militares = funcao
+        ? obterMilitaresOrdenados(funcao).filter(militar => militar.ativo !== false)
+        : [];
+      selMilitar.innerHTML = '<option value="">Selecione o Militar</option>'
+        + militares.map(m => `<option value="${m.id}">${m.nome} (${m.saram})</option>`).join('');
+      selMilitar.disabled = !funcao;
+      selMilitar.value = militares.some(m => m.id === valorAtual) ? valorAtual : '';
     }
 
     // GESTÃO DE MILITARES
@@ -725,7 +823,9 @@
       const maiorOrdem = estado.militares
         .filter(militar => militar.funcao === funcao)
         .reduce((maior, militar) => Math.max(maior, militar.ordem ?? -1), -1);
-      estado.militares.push({ id: Date.now().toString(), nome, saram, funcao, ordem: maiorOrdem + 1, ativo: true });
+      const novoMilitar = { id: Date.now().toString(), nome, saram, funcao, ordem: maiorOrdem + 1, ativo: true, contagemInicialServicos: {} };
+      definirContagemInicialFuncao(novoMilitar, funcao, obterMenorContagemAcumuladaFuncao(funcao));
+      estado.militares.push(novoMilitar);
       salvarEstado();
       document.getElementById('formMilitar').reset();
       renderizarMilitares();
@@ -863,6 +963,7 @@
       const maiorOrdem = estado.militares
         .filter(item => item.funcao === novaFuncao)
         .reduce((maior, item) => Math.max(maior, item.ordem ?? -1), -1);
+      definirContagemInicialFuncao(militar, novaFuncao, obterMenorContagemAcumuladaFuncao(novaFuncao, militar.id));
       militar.funcao = novaFuncao;
       militar.ordem = maiorOrdem + 1;
       salvarEstado();
@@ -974,10 +1075,16 @@
     // GESTÃO DE INDISPONIBILIDADES
     function salvarIndisponibilidade(e) {
       e.preventDefault();
+      const funcao = document.getElementById('indispFuncao').value;
       const militarId = document.getElementById('indispMilitar').value;
       const inicio = document.getElementById('indispInicio').value;
       const fim = document.getElementById('indispFim').value;
       const motivo = document.getElementById('indispMotivo').value.trim();
+      const militar = estado.militares.find(m => m.id === militarId);
+      if (!militar || militar.funcao !== funcao) {
+        alert('Selecione um militar da funcao escolhida.');
+        return;
+      }
       if (fim < inicio) {
         alert('A data final nao pode ser anterior a data inicial.');
         return;
@@ -986,6 +1093,7 @@
       estado.indisponibilidades.push({ id: Date.now().toString(), militarId, inicio, fim, motivo });
       salvarEstado();
       document.getElementById('formIndisponibilidade').reset();
+      renderizarMilitaresIndisponibilidade();
       renderizarIndisponibilidades();
     }
 
@@ -1200,6 +1308,7 @@
 
       const formatarDataBR = data => data.toLocaleDateString('pt-BR');
 
+      aplicarContagensIniciaisPorFuncao(contagemAnoGeracao);
       Object.values(estado.escalas)
         .filter(escala => escala.mesAno && escala.mesAno < mesAno)
         .forEach(escala => obterContagemEscalaPorFuncao(escala, contagemAnoGeracao));
@@ -1267,6 +1376,12 @@
           const tipoFuncaoConfigurado = tiposEscala[col.funcao] || 'corrida';
           const militarEstaIndisponivel = militarId =>
             estado.indisponibilidades.some(i => i.militarId === militarId && dataStr >= i.inicio && dataStr <= i.fim);
+          const militarIniciaIndisponibilidadeNoDiaSeguinte = militarId => {
+            const dataSeguinte = new Date(dataObj);
+            dataSeguinte.setDate(dataSeguinte.getDate() + 1);
+            const dataSeguinteStr = `${dataSeguinte.getFullYear()}-${String(dataSeguinte.getMonth() + 1).padStart(2, '0')}-${String(dataSeguinte.getDate()).padStart(2, '0')}`;
+            return estado.indisponibilidades.some(i => i.militarId === militarId && i.inicio === dataSeguinteStr);
+          };
           const militaresAtivosDaFuncao = obterMilitaresParaEscala(col.funcao);
           const efetivoDisponivelFuncao = militaresAtivosDaFuncao
             .filter(militar => !militarEstaIndisponivel(militar.id)).length;
@@ -1277,7 +1392,7 @@
           if (usarDiferenciadaTemporaria && !diferenciadaTemporariaAtivaPorFuncao[col.funcao]) {
             const ultimoCorrida = ultimoMilitarPorRotacao[`${col.funcao}:todos`];
             ultimoMilitarPorRotacao[`${col.funcao}:semana`] = ultimoMilitarPorFuncaoECor[`${col.funcao}:preto`] || ultimoCorrida;
-            ultimoMilitarPorRotacao[`${col.funcao}:fimSemana`] = ultimoMilitarPorFuncaoECor[`${col.funcao}:vermelho`] || ultimoCorrida;
+            ultimoMilitarPorRotacao[`${col.funcao}:fimSemana`] = ultimoMilitarPorFuncaoECor[`${col.funcao}:vermelho`] || null;
           }
           diferenciadaTemporariaAtivaPorFuncao[col.funcao] = usarDiferenciadaTemporaria;
           const tipoFuncao = usarDiferenciadaTemporaria ? 'semanaFimSemana' : tipoFuncaoConfigurado;
@@ -1294,18 +1409,28 @@
           let ultimoIndice = militaresDaRotacao.findIndex(militar => militar.id === ultimoMilitar);
           let indiceProximo = ultimoIndice === -1 ? 0 : (ultimoIndice + 1) % militaresDaRotacao.length;
           let proximoMilitarDaRotacao = militaresDaRotacao[indiceProximo];
+          const ultimoMilitarAntesDosPulos = ultimoMilitar;
+          const proximoMilitarAntesDosPulos = proximoMilitarDaRotacao;
           const militaresPuladosPorAdiantamento = [];
+          const militaresPuladosPorIndisponibilidade = [];
 
           if (tipoFuncao === 'semanaFimSemana') {
             let seguranca = 0;
             while (proximoMilitarDaRotacao
-              && militaresAdiantadosRotacao[chaveRotacao]?.has(proximoMilitarDaRotacao.id)
+              && (
+                militaresAdiantadosRotacao[chaveRotacao]?.has(proximoMilitarDaRotacao.id)
+                || militarEstaIndisponivel(proximoMilitarDaRotacao.id)
+              )
               && seguranca < militaresDaRotacao.length) {
               const militarPulando = proximoMilitarDaRotacao;
-              militaresPuladosPorAdiantamento.push(militarPulando.id);
-              militaresAdiantadosRotacao[chaveRotacao].delete(militarPulando.id);
-              if (bloqueiosRotacao[chaveRotacao]) {
-                delete bloqueiosRotacao[chaveRotacao][militarPulando.id];
+              if (militarEstaIndisponivel(militarPulando.id)) {
+                militaresPuladosPorIndisponibilidade.push(militarPulando.id);
+              } else {
+                militaresPuladosPorAdiantamento.push(militarPulando.id);
+                militaresAdiantadosRotacao[chaveRotacao].delete(militarPulando.id);
+                if (bloqueiosRotacao[chaveRotacao]) {
+                  delete bloqueiosRotacao[chaveRotacao][militarPulando.id];
+                }
               }
 
               ultimoMilitarPorRotacao[chaveRotacao] = militarPulando.id;
@@ -1323,6 +1448,7 @@
             // 1. Checa Indisponibilidade
             const indisp = militarEstaIndisponivel(militar.id);
             if (indisp) return false;
+            if (militarIniciaIndisponibilidadeNoDiaSeguinte(militar.id)) return false;
 
             // 2. Checa Regra de Intervalo (sem serviço consecutivo)
             const ultimosServicos = historicoServicos[militar.id];
@@ -1347,6 +1473,9 @@
 
             const indisp = militarEstaIndisponivel(militar.id);
             if (indisp) motivos.push('estava indisponivel nesta data');
+            if (militarIniciaIndisponibilidadeNoDiaSeguinte(militar.id)) {
+              motivos.push('iniciaria indisponibilidade no dia seguinte');
+            }
 
             const ultimaDataServico = ultimaDataServicoPorMilitar[militar.id];
             const intervaloCalendario = ultimaDataServico === undefined
@@ -1568,16 +1697,30 @@
             } else {
               explicacao.push('Prioridade da escolha: sequencia da rotacao; em empate, total de servicos no mes.');
             }
+            const houvePulosAutomaticos = militaresPuladosPorAdiantamento.length > 0 || militaresPuladosPorIndisponibilidade.length > 0;
+            if (houvePulosAutomaticos) {
+              if (ultimoMilitarAntesDosPulos) {
+                explicacao.push(`Ultimo militar da rotacao antes dos pulos: ${obterNomeMilitar(ultimoMilitarAntesDosPulos)}.`);
+              } else {
+                explicacao.push('Antes dos pulos, nao havia ultimo militar anterior nesta rotacao.');
+              }
+              if (proximoMilitarAntesDosPulos) {
+                explicacao.push(`Proximo previsto antes dos pulos: ${obterNomeMilitar(proximoMilitarAntesDosPulos.id)}.`);
+              }
+            }
             if (militaresPuladosPorAdiantamento.length > 0) {
               explicacao.push(`Militares pulados por ja terem cumprido esta vez antecipadamente: ${militaresPuladosPorAdiantamento.map(obterNomeMilitar).join(', ')}.`);
             }
+            if (militaresPuladosPorIndisponibilidade.length > 0) {
+              explicacao.push(`Militares pulados por indisponibilidade cadastrada, sem gerar pendencia ou servico atrasado: ${militaresPuladosPorIndisponibilidade.map(obterNomeMilitar).join(', ')}.`);
+            }
             if (ultimoMilitar) {
-              explicacao.push(`Ultimo militar considerado nesta rotacao: ${obterNomeMilitar(ultimoMilitar)}.`);
+              explicacao.push(`${houvePulosAutomaticos ? 'Ultimo militar da rotacao apos os pulos' : 'Ultimo militar considerado nesta rotacao'}: ${obterNomeMilitar(ultimoMilitar)}.`);
             } else {
               explicacao.push('Nao havia ultimo militar anterior nesta rotacao; a escala iniciou pela ordem cadastrada.');
             }
             if (proximoMilitarDaRotacao) {
-              explicacao.push(`Proximo previsto pela ordem: ${obterNomeMilitar(proximoMilitarDaRotacao.id)}.`);
+              explicacao.push(`${houvePulosAutomaticos ? 'Proximo efetivo pela ordem apos os pulos' : 'Proximo previsto pela ordem'}: ${obterNomeMilitar(proximoMilitarDaRotacao.id)}.`);
             }
             const analiseRotacao = obterAnaliseRotacaoAteEscolhido(escolhido);
             if (analiseRotacao.length > 0) {
@@ -1615,9 +1758,11 @@
               explicacao.push('Este militar ainda nao tinha servico anterior registrado no historico considerado.');
             }
             justificativas[dia][col.chave] = explicacao.join('\n');
-            if (proximoMilitarDaRotacao
-              && !militarEraPendente
-              && !militarEraProximo) {
+            if (!militarEraPendente
+              && (
+                (proximoMilitarDaRotacao && !militarEraProximo)
+                || houvePulosAutomaticos
+              )) {
               substituicoes[dia][col.chave] = true;
             }
             if (excecaoVermelhaConsecutiva && ultimoServicoFoiVermelhoPorMilitar[escolhido.id]) {
@@ -1927,6 +2072,12 @@
       if (estado.indisponibilidades.some(i => i.militarId === militarId && dataStr >= i.inicio && dataStr <= i.fim)) {
         violacoes.push('militar indisponivel nesta data');
       }
+      const dataSeguinte = new Date(dataAtual);
+      dataSeguinte.setDate(dataSeguinte.getDate() + 1);
+      const dataSeguinteStr = `${dataSeguinte.getFullYear()}-${String(dataSeguinte.getMonth() + 1).padStart(2, '0')}-${String(dataSeguinte.getDate()).padStart(2, '0')}`;
+      if (estado.indisponibilidades.some(i => i.militarId === militarId && i.inicio === dataSeguinteStr)) {
+        violacoes.push('militar inicia indisponibilidade no dia seguinte');
+      }
 
       const escaladosNoDia = Object.entries(estado.escala.dados?.[dia] || {})
         .filter(([chave, id]) => chave !== chaveColuna && id === militarId);
@@ -2194,6 +2345,7 @@
       const contagemMes = Object.fromEntries(estado.militares.map(m => [m.id, { preto: 0, vermelho: 0 }]));
       const contagemAno = Object.fromEntries(estado.militares.map(m => [m.id, { preto: 0, vermelho: 0 }]));
 
+      aplicarContagensIniciais(contagemAno, filtro);
       if (mesSelecionado && estado.escalas[mesSelecionado]) obterContagemEscala(estado.escalas[mesSelecionado], contagemMes, filtro);
       if (mesSelecionado) {
         Object.values(estado.escalas)
@@ -2293,9 +2445,7 @@
             escala: dados.escala,
             escalas: dados.escalas
           };
-          estado.militares.forEach(militar => {
-            if (militar.ativo === undefined) militar.ativo = true;
-          });
+          normalizarEstadoAtual();
           await salvarEstado();
           renderizarSelectFuncoes();
           renderizarMilitares();

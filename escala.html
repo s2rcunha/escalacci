@@ -65,6 +65,19 @@
     .pdf-exportacao tr {
       page-break-inside: avoid;
     }
+
+    .botao-cor-observacao {
+      width: 2.25rem;
+      height: 2.25rem;
+      border: 2px solid #d1d5db;
+      border-radius: 0.375rem;
+      box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.55);
+    }
+
+    .botao-cor-observacao.selecionada {
+      border-color: #111827;
+      box-shadow: 0 0 0 3px rgba(17, 24, 39, 0.18);
+    }
   </style>
 </head>
 <body class="bg-gray-100 font-sans text-gray-800">
@@ -129,6 +142,7 @@
           <h2 class="text-xl font-bold uppercase" id="tituloEscala">Escala de Serviço - Célula Contraincêndio</h2>
           <p class="text-xs text-gray-500" id="subtituloEscala"></p>
           <p class="legenda-substituicao text-xs font-bold text-yellow-800">Célula amarela: militar escalado automaticamente no lugar de outro por causa das regras</p>
+          <div id="legendaCoresEscala" class="mt-2 flex flex-wrap justify-center gap-2 text-xs"></div>
         </div>
         <table class="w-full border-collapse border border-gray-300 text-xs">
           <thead>
@@ -166,9 +180,9 @@
               <th class="p-2 text-center text-gray-800">Mês preto</th>
               <th class="p-2 text-center text-red-600">Mês vermelho</th>
               <th class="p-2 text-center font-bold">Mês total</th>
-              <th class="p-2 text-center text-gray-800">Ano preto</th>
-              <th class="p-2 text-center text-red-600">Ano vermelho</th>
-              <th class="p-2 text-center font-bold">Ano total</th>
+              <th class="p-2 text-center text-gray-800">Acum. preto</th>
+              <th class="p-2 text-center text-red-600">Acum. vermelho</th>
+              <th class="p-2 text-center font-bold">Acum. total</th>
             </tr>
           </thead>
           <tbody id="corpoResumoServicos"></tbody>
@@ -281,6 +295,86 @@
     </section>
   </div>
 
+  <div id="modalJustificativa" class="hidden fixed inset-0 z-50 items-center justify-center bg-black bg-opacity-50 p-4" onclick="fecharModalJustificativa(event)">
+    <div class="flex max-h-[85vh] w-full max-w-3xl flex-col rounded bg-white shadow-xl" onclick="event.stopPropagation()">
+      <div class="flex items-center justify-between border-b px-5 py-4">
+        <h3 id="tituloModalJustificativa" class="text-lg font-bold text-gray-800">Justificativa da escala</h3>
+        <button type="button" onclick="fecharModalJustificativa()" class="rounded bg-gray-100 px-3 py-1 text-lg font-bold text-gray-600 hover:bg-gray-200" aria-label="Fechar justificativa">x</button>
+      </div>
+      <div class="overflow-y-auto px-5 py-4">
+        <pre id="textoModalJustificativa" class="whitespace-pre-wrap break-words font-sans text-sm leading-relaxed text-gray-700"></pre>
+        <div class="mt-5 border-t pt-4">
+          <h4 class="mb-3 text-sm font-bold text-gray-800">Adicionar observação e cor da célula</h4>
+          <div class="grid grid-cols-1 gap-3 md:grid-cols-2">
+            <label class="block text-sm font-semibold text-gray-700 md:col-span-2">
+              Observação
+              <textarea id="observacaoJustificativa" rows="3" class="mt-1 w-full rounded border p-2 text-sm font-normal" placeholder="Digite a observação"></textarea>
+            </label>
+            <label class="block text-sm font-semibold text-gray-700">
+              Cor de fundo
+              <input type="hidden" id="corObservacaoJustificativa" value="#93c47d">
+              <div id="opcoesCorObservacao" class="mt-2 flex flex-wrap gap-2">
+                <button type="button" class="botao-cor-observacao selecionada" style="background-color: #93c47d;" data-cor="#93c47d" onclick="selecionarCorObservacao('#93c47d')" aria-label="Selecionar cor verde claro"></button>
+                <button type="button" class="botao-cor-observacao" style="background-color: #00b050;" data-cor="#00b050" onclick="selecionarCorObservacao('#00b050')" aria-label="Selecionar cor verde"></button>
+                <button type="button" class="botao-cor-observacao" style="background-color: #00ffff;" data-cor="#00ffff" onclick="selecionarCorObservacao('#00ffff')" aria-label="Selecionar cor ciano"></button>
+                <button type="button" class="botao-cor-observacao" style="background-color: #ea9999;" data-cor="#ea9999" onclick="selecionarCorObservacao('#ea9999')" aria-label="Selecionar cor vermelho claro"></button>
+                <button type="button" class="botao-cor-observacao" style="background-color: #b7b7b7;" data-cor="#b7b7b7" onclick="selecionarCorObservacao('#b7b7b7')" aria-label="Selecionar cor cinza"></button>
+                <button type="button" class="botao-cor-observacao" style="background-color: #f79646;" data-cor="#f79646" onclick="selecionarCorObservacao('#f79646')" aria-label="Selecionar cor laranja"></button>
+                <button type="button" class="botao-cor-observacao" style="background-color: #6fa8dc;" data-cor="#6fa8dc" onclick="selecionarCorObservacao('#6fa8dc')" aria-label="Selecionar cor azul"></button>
+                <button type="button" class="botao-cor-observacao" style="background-color: #ff0000;" data-cor="#ff0000" onclick="selecionarCorObservacao('#ff0000')" aria-label="Selecionar cor vermelho"></button>
+              </div>
+            </label>
+            <label class="block text-sm font-semibold text-gray-700">
+              Legenda da cor
+              <input id="legendaObservacaoJustificativa" type="text" class="mt-1 w-full rounded border p-2 text-sm font-normal" placeholder="Explique o significado da cor">
+            </label>
+          </div>
+        </div>
+      </div>
+      <div class="flex flex-wrap justify-end gap-2 border-t px-5 py-3">
+        <button type="button" onclick="salvarObservacaoJustificativa()" class="rounded bg-indigo-600 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-700">Adicionar observação</button>
+        <button type="button" onclick="fecharModalJustificativa()" class="rounded bg-red-600 px-4 py-2 text-sm font-semibold text-white hover:bg-red-700">Fechar</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="modalAlteracaoManual" class="hidden fixed inset-0 z-50 items-center justify-center bg-black bg-opacity-50 p-4">
+    <form class="flex max-h-[90vh] w-full max-w-xl flex-col rounded bg-white shadow-xl" onsubmit="confirmarJustificativaAlteracaoManual(event)">
+      <div class="flex items-center justify-between border-b px-5 py-4">
+        <h3 class="text-lg font-bold text-gray-800">Justificar alteração manual</h3>
+        <button type="button" onclick="cancelarJustificativaAlteracaoManual()" class="rounded bg-gray-100 px-3 py-1 text-lg font-bold text-gray-600 hover:bg-gray-200" aria-label="Cancelar alteração">x</button>
+      </div>
+      <div class="space-y-4 overflow-y-auto px-5 py-4">
+        <label class="block text-sm font-semibold text-gray-700">
+          Tipo de alteração
+          <select id="tipoAlteracaoManual" required class="mt-1 w-full rounded border p-2 text-sm font-normal">
+            <option value="troca">Militar trocou o serviço</option>
+            <option value="puxado">Militar foi puxado</option>
+            <option value="outros">Outros</option>
+          </select>
+        </label>
+        <label class="block text-sm font-semibold text-gray-700">
+          Justificativa
+          <textarea id="motivoAlteracaoManual" required rows="5" class="mt-1 w-full rounded border p-2 text-sm font-normal" placeholder="Descreva o motivo da alteração"></textarea>
+        </label>
+        <div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
+          <label class="block text-sm font-semibold text-gray-700">
+            Nome do responsável
+            <input id="responsavelAlteracaoManual" required type="text" class="mt-1 w-full rounded border p-2 text-sm font-normal">
+          </label>
+          <label class="block text-sm font-semibold text-gray-700">
+            SARAM do responsável
+            <input id="saramResponsavelAlteracaoManual" required type="text" class="mt-1 w-full rounded border p-2 text-sm font-normal">
+          </label>
+        </div>
+      </div>
+      <div class="flex justify-end gap-2 border-t px-5 py-3">
+        <button type="button" onclick="cancelarJustificativaAlteracaoManual()" class="rounded bg-gray-200 px-4 py-2 text-sm font-semibold text-gray-700 hover:bg-gray-300">Cancelar</button>
+        <button type="submit" class="rounded bg-red-600 px-4 py-2 text-sm font-semibold text-white hover:bg-red-700">Confirmar alteração</button>
+      </div>
+    </form>
+  </div>
+
   <script>
     // Estrutura Inicial de Dados
     const FUNCOES_PADRAO = [
@@ -291,6 +385,16 @@
       'Resgatista',
       'Combatente',
       'Rádio Operador'
+    ];
+    const CORES_OBSERVACAO_PERMITIDAS = [
+      '#93c47d',
+      '#00b050',
+      '#00ffff',
+      '#ea9999',
+      '#b7b7b7',
+      '#f79646',
+      '#6fa8dc',
+      '#ff0000'
     ];
 
     function lerLocalStorageJSON(chave, padrao) {
@@ -442,6 +546,12 @@
 
     function obterTiposEscalaDaEscala(escala) {
       if (escala && escala.tipos) return escala.tipos;
+      if (!escala || !escala.mesAno) {
+        return estado.funcoes.reduce((tipos, funcao) => {
+          tipos[funcao] = obterTipoPadraoFuncao(funcao);
+          return tipos;
+        }, {});
+      }
       const tipoAntigo = escala && escala.tipo === 'semanaFimSemana' ? 'semanaFimSemana' : 'corrida';
       return estado.funcoes.reduce((tipos, funcao) => {
         tipos[funcao] = tipoAntigo;
@@ -469,6 +579,26 @@
       return ehServicoVermelho(data);
     }
 
+    function contarMilitaresAtivosPorFuncao(funcao) {
+      return estado.militares.filter(militar => militar.funcao === funcao && militar.ativo !== false).length;
+    }
+
+    function obterTipoPadraoFuncao(funcao) {
+      return contarMilitaresAtivosPorFuncao(funcao) === 7 ? 'semanaFimSemana' : 'corrida';
+    }
+
+    function validarTipoEscalaManual(seletor) {
+      const funcao = seletor.dataset.funcao;
+      if (seletor.value !== 'corrida' || contarMilitaresAtivosPorFuncao(funcao) !== 7) return;
+
+      const confirmar = confirm(
+        `A funcao "${funcao}" possui exatamente 7 militares ativos.\n\n` +
+        'Usar escala corrida pode ocasionar vicio da escala, ficando sempre o mesmo militar na segunda-feira, o mesmo nas tercas-feiras, e assim sucessivamente.\n\n' +
+        'Deseja manter a escala corrida mesmo assim?'
+      );
+      if (!confirmar) seletor.value = 'semanaFimSemana';
+    }
+
     function renderizarTiposEscala(tiposSalvos) {
       const container = document.getElementById('listaTiposEscala');
       if (!container) return;
@@ -477,9 +607,9 @@
       container.innerHTML = estado.funcoes.map((funcao, indice) => `
         <label class="flex flex-col gap-1 border rounded p-3 bg-gray-50">
           <span class="text-xs font-semibold text-gray-700">${funcao}</span>
-          <select id="tipoEscala-${indice}" data-funcao="${funcao}" class="border p-2 rounded text-sm bg-white">
-            <option value="corrida" ${(tipos[funcao] || 'corrida') === 'corrida' ? 'selected' : ''}>Corrida</option>
-            <option value="semanaFimSemana" ${tipos[funcao] === 'semanaFimSemana' ? 'selected' : ''}>Diferenciar dias uteis e vermelhos</option>
+          <select id="tipoEscala-${indice}" data-funcao="${funcao}" onchange="validarTipoEscalaManual(this)" class="border p-2 rounded text-sm bg-white">
+            <option value="corrida" ${(tipos[funcao] || obterTipoPadraoFuncao(funcao)) === 'corrida' ? 'selected' : ''}>Corrida</option>
+            <option value="semanaFimSemana" ${(tipos[funcao] || obterTipoPadraoFuncao(funcao)) === 'semanaFimSemana' ? 'selected' : ''}>Diferenciar dias uteis e vermelhos</option>
           </select>
         </label>
       `).join('');
@@ -551,6 +681,12 @@
       renderizarVagas();
       renderizarIndisponibilidades();
       renderizarTabelaEscala();
+      document.addEventListener('keydown', evento => {
+        if (evento.key === 'Escape') {
+          fecharModalJustificativa();
+          cancelarJustificativaAlteracaoManual();
+        }
+      });
     }
 
     function trocarAba(nomeAba) {
@@ -604,7 +740,50 @@
       salvarEstado();
       renderizarMilitares();
       renderizarSelectFuncoes();
+      renderizarLegendaCoresEscala();
       renderizarResumoServicos();
+    }
+
+    function adicionarItemLegenda(container, cor, texto) {
+      const item = document.createElement('span');
+      item.className = 'inline-flex items-center gap-1 rounded border border-gray-300 bg-white px-2 py-1';
+      const amostra = document.createElement('span');
+      amostra.className = 'inline-block h-3 w-5 rounded border border-gray-400';
+      amostra.style.backgroundColor = cor;
+      const rotulo = document.createElement('span');
+      rotulo.textContent = texto;
+      item.append(amostra, rotulo);
+      container.appendChild(item);
+    }
+
+    function renderizarLegendaCoresEscala() {
+      const container = document.getElementById('legendaCoresEscala');
+      if (!container) return;
+      container.innerHTML = '';
+      const escala = estado.escala || {};
+      let temTroca = false;
+      let temPuxado = false;
+      const legendasObservacao = new Map();
+
+      Object.values(escala.alteracoesManuais || {}).forEach(linha => {
+        Object.values(linha || {}).forEach(alteracao => {
+          if (alteracao?.tipo === 'troca') temTroca = true;
+          if (alteracao?.tipo === 'puxado') temPuxado = true;
+        });
+      });
+
+      Object.values(escala.observacoes || {}).forEach(linha => {
+        Object.values(linha || {}).forEach(observacao => {
+          if (!observacao?.cor || !observacao?.legenda) return;
+          legendasObservacao.set(`${observacao.cor}|${observacao.legenda}`, observacao);
+        });
+      });
+
+      if (temTroca) adicionarItemLegenda(container, '#ccff00', 'Militar trocou o servico');
+      if (temPuxado) adicionarItemLegenda(container, '#fee2e2', 'Militar foi puxado');
+      legendasObservacao.forEach(observacao => {
+        adicionarItemLegenda(container, observacao.cor, observacao.legenda);
+      });
     }
 
     function reativarMilitar(id) {
@@ -864,6 +1043,29 @@
       return ultimosPorFuncao;
     }
 
+    function obterUltimosMilitaresPorFuncaoECor(escalaAnterior) {
+      const ultimosPorFuncaoECor = {};
+      if (!escalaAnterior || !escalaAnterior.dados || !escalaAnterior.mesAno) return ultimosPorFuncaoECor;
+
+      const [anoAnterior, mesAnterior] = escalaAnterior.mesAno.split('-').map(Number);
+      Object.keys(escalaAnterior.dados)
+        .sort((a, b) => Number(a) - Number(b))
+        .forEach(dia => {
+          const dataObj = new Date(anoAnterior, mesAnterior - 1, Number(dia));
+          const corServico = escalaTemDiaVermelho(escalaAnterior, dataObj, Number(dia)) ? 'vermelho' : 'preto';
+
+          Object.entries(escalaAnterior.dados[dia]).forEach(([chave, militarId]) => {
+            if (!militarId) return;
+            const separador = chave.lastIndexOf(' #');
+            if (separador === -1) return;
+            const funcao = chave.slice(0, separador);
+            ultimosPorFuncaoECor[`${funcao}:${corServico}`] = militarId;
+          });
+        });
+
+      return ultimosPorFuncaoECor;
+    }
+
     function obterMilitaresNoUltimoEvento(escalaAnterior, tiposEscala) {
       const ultimosEventos = {};
       if (!escalaAnterior || !escalaAnterior.dados || !escalaAnterior.mesAno) return ultimosEventos;
@@ -961,8 +1163,9 @@
       let diasDaSemanaServico = {}; 
       let contadorEventosRotacao = {};
       let ultimoEventoPorMilitar = {};
-      const ultimosMilitaresPorFuncao = obterUltimosMilitaresPorFuncao(obterEscalaAnterior(mesAno));
       const escalaAnterior = obterEscalaAnterior(mesAno);
+      const ultimosMilitaresPorFuncao = obterUltimosMilitaresPorFuncao(escalaAnterior);
+      const ultimosMilitaresPorFuncaoECor = obterUltimosMilitaresPorFuncaoECor(escalaAnterior);
       const ultimosEventosAnteriores = obterMilitaresNoUltimoEvento(escalaAnterior, tiposEscala);
       const ultimasDatasAnteriores = obterUltimasDatasServicos(escalaAnterior, tiposEscala);
       const ultimosTiposAnteriores = obterUltimoServicoFoiVermelhoPorMilitar(escalaAnterior);
@@ -973,6 +1176,8 @@
       const pendenciasRotacao = {};
       const militaresAdiantadosRotacao = {};
       const bloqueiosRotacao = {};
+      const ultimoMilitarPorFuncaoECor = { ...ultimosMilitaresPorFuncaoECor };
+      const diferenciadaTemporariaAtivaPorFuncao = {};
       const compensacoesAnteriores = escalaAnterior?.compensacoesRotacao
         || escalaAnterior?.compensacoesFimSemana
         || {};
@@ -996,7 +1201,7 @@
       const formatarDataBR = data => data.toLocaleDateString('pt-BR');
 
       Object.values(estado.escalas)
-        .filter(escala => escala.mesAno && escala.mesAno.slice(0, 4) === String(ano) && escala.mesAno < mesAno)
+        .filter(escala => escala.mesAno && escala.mesAno < mesAno)
         .forEach(escala => obterContagemEscalaPorFuncao(escala, contagemAnoGeracao));
 
       estruturaGerada.funcoes.forEach(funcao => {
@@ -1004,7 +1209,7 @@
         const tipoFuncao = tiposEscala[funcao] || 'corrida';
         ultimoMilitarPorRotacao[`${funcao}:todos`] = ultimoMilitar;
         ultimoMilitarPorRotacao[`${funcao}:semana`] = ultimoMilitar;
-        ultimoMilitarPorRotacao[`${funcao}:fimSemana`] = tipoFuncao === 'semanaFimSemana' ? null : ultimoMilitar;
+        ultimoMilitarPorRotacao[`${funcao}:fimSemana`] = null;
         contadorEventosRotacao[`${funcao}:todos`] = 0;
         contadorEventosRotacao[`${funcao}:semana`] = 0;
         contadorEventosRotacao[`${funcao}:fimSemana`] = 0;
@@ -1059,7 +1264,23 @@
         justificativas[dia] = {};
 
         colunasVagas.forEach(col => {
-          const tipoFuncao = tiposEscala[col.funcao] || 'corrida';
+          const tipoFuncaoConfigurado = tiposEscala[col.funcao] || 'corrida';
+          const militarEstaIndisponivel = militarId =>
+            estado.indisponibilidades.some(i => i.militarId === militarId && dataStr >= i.inicio && dataStr <= i.fim);
+          const militaresAtivosDaFuncao = obterMilitaresParaEscala(col.funcao);
+          const efetivoDisponivelFuncao = militaresAtivosDaFuncao
+            .filter(militar => !militarEstaIndisponivel(militar.id)).length;
+          const indisponibilidadeAtivaFuncao = militaresAtivosDaFuncao.length > efetivoDisponivelFuncao;
+          const usarDiferenciadaTemporaria = tipoFuncaoConfigurado === 'corrida'
+            && indisponibilidadeAtivaFuncao
+            && efetivoDisponivelFuncao <= 7;
+          if (usarDiferenciadaTemporaria && !diferenciadaTemporariaAtivaPorFuncao[col.funcao]) {
+            const ultimoCorrida = ultimoMilitarPorRotacao[`${col.funcao}:todos`];
+            ultimoMilitarPorRotacao[`${col.funcao}:semana`] = ultimoMilitarPorFuncaoECor[`${col.funcao}:preto`] || ultimoCorrida;
+            ultimoMilitarPorRotacao[`${col.funcao}:fimSemana`] = ultimoMilitarPorFuncaoECor[`${col.funcao}:vermelho`] || ultimoCorrida;
+          }
+          diferenciadaTemporariaAtivaPorFuncao[col.funcao] = usarDiferenciadaTemporaria;
+          const tipoFuncao = usarDiferenciadaTemporaria ? 'semanaFimSemana' : tipoFuncaoConfigurado;
           const aplicarRegraVermelha = tipoFuncao === 'semanaFimSemana' && servicoVermelho;
           const chaveRotacao = tipoFuncao === 'semanaFimSemana'
             ? `${col.funcao}:${servicoVermelho ? 'fimSemana' : 'semana'}`
@@ -1074,8 +1295,6 @@
           let indiceProximo = ultimoIndice === -1 ? 0 : (ultimoIndice + 1) % militaresDaRotacao.length;
           let proximoMilitarDaRotacao = militaresDaRotacao[indiceProximo];
           const militaresPuladosPorAdiantamento = [];
-          const militarEstaIndisponivel = militarId =>
-            estado.indisponibilidades.some(i => i.militarId === militarId && dataStr >= i.inicio && dataStr <= i.fim);
 
           if (tipoFuncao === 'semanaFimSemana') {
             let seguranca = 0;
@@ -1160,6 +1379,37 @@
             }
 
             return motivos;
+          };
+
+          const obterAnaliseRotacaoAteEscolhido = escolhido => {
+            if (!proximoMilitarDaRotacao || militaresDaRotacao.length === 0) return [];
+
+            const analise = [];
+            let indiceAnalise = militaresDaRotacao.findIndex(militar => militar.id === proximoMilitarDaRotacao.id);
+            if (indiceAnalise === -1) return analise;
+
+            for (let passo = 0; passo < militaresDaRotacao.length; passo++) {
+              const militarAnalisado = militaresDaRotacao[indiceAnalise];
+              const nomeMilitar = obterNomeMilitar(militarAnalisado.id);
+
+              if (militarAnalisado.id === escolhido.id) {
+                analise.push(`${nomeMilitar}: escolhido para a vaga.`);
+                break;
+              }
+
+              const motivos = obterMotivosImpedimento(militarAnalisado);
+              if (motivos.length > 0) {
+                analise.push(`${nomeMilitar}: nao foi escalado porque ${motivos.join('; ')}.`);
+              } else if (tipoFuncao === 'semanaFimSemana' && pendenciasRotacao[chaveRotacao] === escolhido.id) {
+                analise.push(`${nomeMilitar}: estava valido, mas havia militar pendente com prioridade nesta rotacao.`);
+              } else {
+                analise.push(`${nomeMilitar}: estava valido, mas outro militar foi escolhido pelo criterio de equilibrio aplicado nesta rotacao.`);
+              }
+
+              indiceAnalise = (indiceAnalise + 1) % militaresDaRotacao.length;
+            }
+
+            return analise;
           };
 
           let candidatos = obterMilitaresParaEscala(col.funcao).filter(m => podeSerEscalado(m));
@@ -1310,8 +1560,11 @@
               `Tipo de servico: ${servicoVermelho ? 'vermelho' : 'preto'}.`,
               `Rotacao usada: ${tipoFuncao === 'semanaFimSemana' ? (servicoVermelho ? 'fim de semana/feriado' : 'dias uteis') : 'corrida'}.`
             ];
+            if (usarDiferenciadaTemporaria) {
+              explicacao.push(`A funcao esta configurada como corrida, mas nesta data havia ${efetivoDisponivelFuncao} militares disponiveis por indisponibilidade cadastrada; por isso foram aplicados temporariamente os criterios da escala diferenciada.`);
+            }
             if (tipoFuncao === 'semanaFimSemana') {
-              explicacao.push(`Prioridade da escolha: sequencia da rotacao; em empate, ano ${servicoVermelho ? 'vermelho' : 'preto'}.`);
+              explicacao.push(`Prioridade da escolha: sequencia da rotacao; em empate, acumulado ${servicoVermelho ? 'vermelho' : 'preto'}.`);
             } else {
               explicacao.push('Prioridade da escolha: sequencia da rotacao; em empate, total de servicos no mes.');
             }
@@ -1325,6 +1578,10 @@
             }
             if (proximoMilitarDaRotacao) {
               explicacao.push(`Proximo previsto pela ordem: ${obterNomeMilitar(proximoMilitarDaRotacao.id)}.`);
+            }
+            const analiseRotacao = obterAnaliseRotacaoAteEscolhido(escolhido);
+            if (analiseRotacao.length > 0) {
+              explicacao.push(`Analise da rotacao ate o escolhido:\n- ${analiseRotacao.join('\n- ')}`);
             }
             if (militarEraPendente) {
               explicacao.push('Este militar tinha prioridade por estar pendente de uma rodada anterior.');
@@ -1399,9 +1656,13 @@
             if (militarEraProximo || militarEraPendente || tipoFuncao !== 'semanaFimSemana') {
               ultimoMilitarPorRotacao[chaveRotacao] = escolhido.id;
             }
+            if (usarDiferenciadaTemporaria) {
+              ultimoMilitarPorRotacao[`${col.funcao}:todos`] = escolhido.id;
+            }
             ultimoEventoPorMilitar[`${escolhido.id}:${chaveRotacao}`] = eventoRotacao;
             ultimaDataServicoPorMilitar[escolhido.id] = dataObj.getTime();
             ultimoServicoFoiVermelhoPorMilitar[escolhido.id] = servicoVermelho;
+            ultimoMilitarPorFuncaoECor[`${col.funcao}:${servicoVermelho ? 'vermelho' : 'preto'}`] = escolhido.id;
             if (!contagemAnoGeracao[escolhido.id][col.funcao]) {
               contagemAnoGeracao[escolhido.id][col.funcao] = { preto: 0, vermelho: 0 };
             }
@@ -1449,6 +1710,7 @@
 
       if (!mesAno || !estado.escala.dados || estado.escala.mesAno !== mesAno) {
         corpo.innerHTML = `<tr><td colspan="12" class="text-center p-6 text-gray-400">Nenhuma escala gerada para este mês.</td></tr>`;
+        renderizarLegendaCoresEscala();
         renderizarResumoServicos();
         return;
       }
@@ -1488,6 +1750,13 @@
         colunasVagas.forEach(col => {
           const militarIdEscalado = estado.escala.dados[dia]?.[col.chave] || '';
           const ehSubstituicao = Boolean(estado.escala.substituicoes?.[dia]?.[col.chave]);
+          const tipoAlteracaoManual = estado.escala.alteracoesManuais?.[dia]?.[col.chave]?.tipo || '';
+          const observacaoCelula = estado.escala.observacoes?.[dia]?.[col.chave];
+          const corAlteracaoManual = tipoAlteracaoManual === 'troca'
+            ? '#ccff00'
+            : (tipoAlteracaoManual === 'puxado' ? '#fee2e2' : '');
+          const corFundoCelula = observacaoCelula?.cor || corAlteracaoManual;
+          const estiloFundoCelula = corFundoCelula ? ` style="background-color: ${corFundoCelula};"` : '';
           
           // Dropdown de edição manual
           const opcoes = estado.militares
@@ -1503,7 +1772,7 @@
             : '<span class="pdf-militar">-- Sem Militar --</span>';
 
           htmlCorpo += `
-            <td class="celula-escala border p-1 ${ehSubstituicao ? 'bg-yellow-200 font-bold' : ''}">
+            <td class="celula-escala border p-1 ${corFundoCelula ? '' : (ehSubstituicao ? 'bg-yellow-200 font-bold' : '')}"${estiloFundoCelula}>
               <div class="flex items-start gap-1">
                 <button type="button" title="Clique para ver a justificativa" onclick="mostrarJustificativa(${dia}, '${encodeURIComponent(col.chave)}')" class="botao-justificativa min-w-0 flex-1 text-left text-xs p-1 rounded hover:bg-yellow-100 ${ehSubstituicao ? 'font-bold' : 'font-medium'}">${textoBotaoJustificativa}</button>
                 <select title="Alterar militar" onchange="atualizarEscalaManual(${dia}, '${col.chave}', this.value)" class="w-7 shrink-0 text-xs p-1 rounded border bg-white ${ehSubstituicao ? 'font-bold' : ''}">
@@ -1522,7 +1791,86 @@
       corpo.innerHTML = htmlCorpo;
       document.getElementById('tituloEscala').innerText = `ESCALA DE SERVIÇO DE CONTRAINCÊNDIO - ${mes}/${ano}`;
       document.getElementById('subtituloEscala').innerText = `Gerado em ${new Date().toLocaleDateString('pt-BR')}`;
+      renderizarLegendaCoresEscala();
       renderizarResumoServicos();
+    }
+
+    let contextoJustificativaAtual = null;
+
+    function selecionarCorObservacao(cor) {
+      if (!CORES_OBSERVACAO_PERMITIDAS.includes(cor)) return;
+      document.getElementById('corObservacaoJustificativa').value = cor;
+      document.querySelectorAll('#opcoesCorObservacao .botao-cor-observacao').forEach(botao => {
+        botao.classList.toggle('selecionada', botao.dataset.cor === cor);
+      });
+    }
+
+    function abrirModalJustificativa(titulo, texto, contexto = null) {
+      contextoJustificativaAtual = contexto;
+      const modal = document.getElementById('modalJustificativa');
+      document.getElementById('tituloModalJustificativa').textContent = titulo;
+      document.getElementById('textoModalJustificativa').textContent = texto;
+      document.getElementById('observacaoJustificativa').value = '';
+      selecionarCorObservacao(CORES_OBSERVACAO_PERMITIDAS[0]);
+      document.getElementById('legendaObservacaoJustificativa').value = '';
+      modal.classList.remove('hidden');
+      modal.classList.add('flex');
+    }
+
+    function fecharModalJustificativa(evento) {
+      if (evento && evento.target.id !== 'modalJustificativa') return;
+      const modal = document.getElementById('modalJustificativa');
+      modal.classList.add('hidden');
+      modal.classList.remove('flex');
+      contextoJustificativaAtual = null;
+    }
+
+    function salvarObservacaoJustificativa() {
+      if (!contextoJustificativaAtual || !estado.escala?.dados) return;
+      const { dia, chaveColuna } = contextoJustificativaAtual;
+      const observacao = document.getElementById('observacaoJustificativa').value.trim();
+      const cor = document.getElementById('corObservacaoJustificativa').value;
+      const legenda = document.getElementById('legendaObservacaoJustificativa').value.trim();
+      if (!observacao) {
+        alert('Informe a observacao antes de salvar.');
+        return;
+      }
+      if (!CORES_OBSERVACAO_PERMITIDAS.includes(cor)) {
+        alert('Selecione uma das cores permitidas.');
+        return;
+      }
+      if (!legenda) {
+        alert('Explique na legenda o que a cor escolhida significa.');
+        return;
+      }
+
+      if (!estado.escala.observacoes) estado.escala.observacoes = {};
+      if (!estado.escala.observacoes[dia]) estado.escala.observacoes[dia] = {};
+      estado.escala.observacoes[dia][chaveColuna] = {
+        texto: observacao,
+        cor,
+        legenda,
+        dataHora: new Date().toISOString()
+      };
+
+      if (!estado.escala.justificativas) estado.escala.justificativas = {};
+      if (!estado.escala.justificativas[dia]) estado.escala.justificativas[dia] = {};
+      const justificativaAnterior = estado.escala.justificativas[dia][chaveColuna] || '';
+      const registroObservacao = [
+        'OBSERVACAO:',
+        `Data e hora da observacao: ${new Date().toLocaleString('pt-BR')}.`,
+        `Observacao informada: ${observacao}.`,
+        `Cor aplicada: ${cor}.`,
+        `Legenda da cor: ${legenda}.`
+      ].join('\n');
+      estado.escala.justificativas[dia][chaveColuna] = justificativaAnterior
+        ? `${justificativaAnterior}\n\n${registroObservacao}`
+        : registroObservacao;
+
+      estado.escalas[estado.escala.mesAno] = estado.escala;
+      salvarEstado();
+      abrirModalJustificativa(`Justificativa - dia ${dia} - ${chaveColuna}`, estado.escala.justificativas[dia][chaveColuna], contextoJustificativaAtual);
+      renderizarTabelaEscala();
     }
 
     function mostrarJustificativa(dia, chaveColunaCodificada) {
@@ -1530,18 +1878,23 @@
       const justificativa = estado.escala.justificativas?.[dia]?.[chaveColuna];
       const militarId = estado.escala.dados?.[dia]?.[chaveColuna];
       const militar = estado.militares.find(m => m.id === militarId);
+      const titulo = `Justificativa - dia ${dia} - ${chaveColuna}`;
 
       if (justificativa) {
-        alert(justificativa);
+        abrirModalJustificativa(titulo, justificativa, { dia, chaveColuna });
         return;
       }
 
       if (militar) {
-        alert(`${militar.nome} (${militar.saram}) foi escalado nesta vaga, mas esta escala foi gerada antes do registro detalhado de justificativas. Gere novamente a escala para salvar a explicacao automatica.`);
+        abrirModalJustificativa(
+          titulo,
+          `${militar.nome} (${militar.saram}) foi escalado nesta vaga, mas esta escala foi gerada antes do registro detalhado de justificativas. Gere novamente a escala para salvar a explicacao automatica.`,
+          { dia, chaveColuna }
+        );
         return;
       }
 
-      alert('Nao ha militar escalado nesta vaga.');
+      abrirModalJustificativa(titulo, 'Nao ha militar escalado nesta vaga.', { dia, chaveColuna });
     }
 
     function analisarViolacoesAlteracaoManual(dia, chaveColuna, militarId) {
@@ -1558,6 +1911,14 @@
       const tiposEscala = obterTiposEscalaDaEscala(estado.escala);
       const servicoVermelhoAtual = escalaTemDiaVermelho(estado.escala, dataAtual, Number(dia));
       const formatarData = data => data.toLocaleDateString('pt-BR');
+      const militaresAtivosDaFuncao = obterMilitaresParaEscala(funcao);
+      const efetivoDisponivelFuncao = militaresAtivosDaFuncao
+        .filter(m => !estado.indisponibilidades.some(i => i.militarId === m.id && dataStr >= i.inicio && dataStr <= i.fim))
+        .length;
+      const usarDiferenciadaTemporaria = tiposEscala[funcao] === 'corrida'
+        && militaresAtivosDaFuncao.length > efetivoDisponivelFuncao
+        && efetivoDisponivelFuncao <= 7;
+      const aplicarRegraVermelha = tiposEscala[funcao] === 'semanaFimSemana' || usarDiferenciadaTemporaria;
 
       if (militar.funcao !== funcao) {
         violacoes.push('militar pertence a outra funcao');
@@ -1627,7 +1988,7 @@
         }
       });
 
-      if (tiposEscala[funcao] === 'semanaFimSemana' && servicoVermelhoAtual) {
+      if (aplicarRegraVermelha && servicoVermelhoAtual) {
         const anteriores = servicosUnicos.filter(servico => servico.tempo < dataAtual.getTime());
         const posteriores = servicosUnicos.filter(servico => servico.tempo > dataAtual.getTime());
         const anterior = anteriores[anteriores.length - 1];
@@ -1643,8 +2004,59 @@
       return [...new Set(violacoes)];
     }
 
-    function atualizarEscalaManual(dia, chaveColuna, militarId) {
+    let resolverJustificativaAlteracaoManual = null;
+
+    function solicitarJustificativaAlteracaoManual() {
+      return new Promise(resolve => {
+        resolverJustificativaAlteracaoManual = resolve;
+        document.getElementById('tipoAlteracaoManual').value = 'troca';
+        document.getElementById('motivoAlteracaoManual').value = '';
+        document.getElementById('responsavelAlteracaoManual').value = '';
+        document.getElementById('saramResponsavelAlteracaoManual').value = '';
+        const modal = document.getElementById('modalAlteracaoManual');
+        modal.classList.remove('hidden');
+        modal.classList.add('flex');
+        document.getElementById('motivoAlteracaoManual').focus();
+      });
+    }
+
+    function fecharModalAlteracaoManual() {
+      const modal = document.getElementById('modalAlteracaoManual');
+      modal.classList.add('hidden');
+      modal.classList.remove('flex');
+    }
+
+    function cancelarJustificativaAlteracaoManual() {
+      fecharModalAlteracaoManual();
+      if (resolverJustificativaAlteracaoManual) {
+        resolverJustificativaAlteracaoManual(null);
+        resolverJustificativaAlteracaoManual = null;
+      }
+    }
+
+    function confirmarJustificativaAlteracaoManual(evento) {
+      evento.preventDefault();
+      const tipo = document.getElementById('tipoAlteracaoManual').value;
+      const motivo = document.getElementById('motivoAlteracaoManual').value.trim();
+      const responsavelNome = document.getElementById('responsavelAlteracaoManual').value.trim();
+      const responsavelSaram = document.getElementById('saramResponsavelAlteracaoManual').value.trim();
+      if (!tipo || !motivo || !responsavelNome || !responsavelSaram) {
+        alert('Preencha o tipo da alteracao, a justificativa, o nome e o SARAM do responsavel.');
+        return;
+      }
+
+      fecharModalAlteracaoManual();
+      if (resolverJustificativaAlteracaoManual) {
+        resolverJustificativaAlteracaoManual({ tipo, motivo, responsavelNome, responsavelSaram });
+        resolverJustificativaAlteracaoManual = null;
+      }
+    }
+
+    async function atualizarEscalaManual(dia, chaveColuna, militarId) {
       if (estado.escala.dados && estado.escala.dados[dia]) {
+        const militarIdAnterior = estado.escala.dados[dia][chaveColuna] || '';
+        if (militarIdAnterior === militarId) return;
+
         const violacoes = analisarViolacoesAlteracaoManual(dia, chaveColuna, militarId);
         if (violacoes.length > 0) {
           const mensagem = `ATENCAO: Esta alteracao viola ${violacoes.length} regra(s):\n\n- ${violacoes.join('\n- ')}\n\nDeseja manter mesmo assim?`;
@@ -1653,16 +2065,51 @@
             return;
           }
         }
+
+        const dadosJustificativaManual = await solicitarJustificativaAlteracaoManual();
+        if (!dadosJustificativaManual) {
+          renderizarTabelaEscala();
+          return;
+        }
+
         estado.escala.dados[dia][chaveColuna] = militarId;
         if (estado.escala.substituicoes?.[dia]) {
           delete estado.escala.substituicoes[dia][chaveColuna];
         }
+        if (!estado.escala.alteracoesManuais) estado.escala.alteracoesManuais = {};
+        if (!estado.escala.alteracoesManuais[dia]) estado.escala.alteracoesManuais[dia] = {};
+        estado.escala.alteracoesManuais[dia][chaveColuna] = {
+          tipo: dadosJustificativaManual.tipo,
+          dataHora: new Date().toISOString()
+        };
         if (!estado.escala.justificativas) estado.escala.justificativas = {};
         if (!estado.escala.justificativas[dia]) estado.escala.justificativas[dia] = {};
+        const justificativaAnterior = estado.escala.justificativas[dia][chaveColuna] || '';
+        const militarAnterior = estado.militares.find(m => m.id === militarIdAnterior);
         const militar = estado.militares.find(m => m.id === militarId);
-        estado.escala.justificativas[dia][chaveColuna] = militar
-          ? `${militar.nome} (${militar.saram}) foi inserido por alteracao manual nesta vaga. A edicao manual nao executa novamente as regras automaticas; confira folga, indisponibilidade, repeticao no dia e servicos vermelhos.`
-          : 'Esta vaga foi deixada sem militar por alteracao manual.';
+        const nomeAnterior = militarAnterior ? `${militarAnterior.nome} (${militarAnterior.saram})` : 'Sem militar';
+        const nomeNovo = militar ? `${militar.nome} (${militar.saram})` : 'Sem militar';
+        const rotulosTipoAlteracao = {
+          troca: 'Militar trocou o servico',
+          puxado: 'Militar foi puxado',
+          outros: 'Outros'
+        };
+        const registroManual = [
+          'ALTERACAO MANUAL:',
+          `Data e hora da alteracao: ${new Date().toLocaleString('pt-BR')}.`,
+          `Tipo de alteracao: ${rotulosTipoAlteracao[dadosJustificativaManual.tipo] || dadosJustificativaManual.tipo}.`,
+          `Militar original/substituido: ${nomeAnterior}.`,
+          `Militar inserido/substituto: ${nomeNovo}.`,
+          `Justificativa informada: ${dadosJustificativaManual.motivo}.`,
+          `Responsavel pela alteracao: ${dadosJustificativaManual.responsavelNome} (SARAM: ${dadosJustificativaManual.responsavelSaram}).`,
+          violacoes.length > 0
+            ? `Alteracao mantida com autorizacao do usuario, mesmo violando: ${violacoes.join('; ')}.`
+            : 'Nenhuma violacao de regra foi identificada na validacao manual.',
+          'A edicao manual nao executa novamente as regras automaticas; confira folga, indisponibilidade, repeticao no dia e servicos vermelhos.'
+        ].join('\n');
+        estado.escala.justificativas[dia][chaveColuna] = justificativaAnterior
+          ? `${justificativaAnterior}\n\n${registroManual}`
+          : registroManual;
         estado.escalas[estado.escala.mesAno] = estado.escala;
         salvarEstado();
         renderizarTabelaEscala();
@@ -1749,9 +2196,8 @@
 
       if (mesSelecionado && estado.escalas[mesSelecionado]) obterContagemEscala(estado.escalas[mesSelecionado], contagemMes, filtro);
       if (mesSelecionado) {
-        const anoSelecionado = mesSelecionado.slice(0, 4);
         Object.values(estado.escalas)
-          .filter(escala => escala.mesAno && escala.mesAno.slice(0, 4) === anoSelecionado && escala.mesAno <= mesSelecionado)
+          .filter(escala => escala.mesAno && escala.mesAno <= mesSelecionado)
           .forEach(escala => obterContagemEscala(escala, contagemAno, filtro));
       }
 

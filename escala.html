@@ -2861,14 +2861,19 @@
       }
     }
 
+    function obterMesBaseEscala(mesAno) {
+      return String(mesAno || '').slice(0, 7);
+    }
+
     function obterMesesFuturosGerados(mesAno) {
+      const mesBase = obterMesBaseEscala(mesAno);
       return Object.keys(estado.escalas || {})
-        .filter(mesEscala => mesEscala > mesAno)
-        .sort();
+        .filter(mesEscala => obterMesBaseEscala(mesEscala) > mesBase)
+        .sort((a, b) => obterMesBaseEscala(a).localeCompare(obterMesBaseEscala(b)));
     }
 
     function formatarMesAno(mesAno) {
-      const [ano, mes] = mesAno.split('-');
+      const [ano, mes] = obterMesBaseEscala(mesAno).split('-');
       return `${mes}/${ano}`;
     }
 
@@ -2954,7 +2959,7 @@
           delete estado.escalas[mesEscala];
         });
         estado.escalas[estado.escala.mesAno] = estado.escala;
-        salvarEstado();
+        await salvarEstado();
         renderizarTabelaEscala();
       }
     }

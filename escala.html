@@ -6,8 +6,9 @@
   <title>Sistema de Escala Automática - CCI</title>
   <!-- Tailwind CSS CDN -->
   <script src="https://cdn.tailwindcss.com"></script>
-  <!-- html2pdf.js CDN para exportação em PDF -->
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
+  <!-- Bibliotecas para exportacao de PDF em pagina unica -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
   <style>
     #areaEscalaPDF {
       overflow-x: auto;
@@ -3368,10 +3369,12 @@
     }
 
     // EXPORTAÇÃO PARA PDF
-    function exportarPDF() {
+    async function exportarPDF() {
       const elemento = document.getElementById('areaEscalaPDF');
       const copia = elemento.cloneNode(true);
       copia.classList.add('pdf-exportacao');
+      copia.style.padding = '0';
+      copia.style.borderRadius = '0';
       copia.querySelector('.legenda-substituicao')?.remove();
       copia.querySelectorAll('td').forEach(celula => {
         celula.classList.remove('bg-yellow-200', 'font-bold');
@@ -3383,17 +3386,44 @@
         celula.replaceChildren(textoVisivel);
       });
 
-      const quantidadeColunas = copia.querySelectorAll('thead th').length;
-      const larguraPagina = Math.max(11.69, Math.min(40, 2.2 + quantidadeColunas * 1.35));
-      const opt = {
-        margin:       0.2,
-        filename:     `Escala_CCI_${document.getElementById('mesAnoEscala').value}.pdf`,
-        image:        { type: 'jpeg', quality: 0.98 },
-        html2canvas:  { scale: 2, useCORS: true, windowWidth: Math.ceil(larguraPagina * 96) },
-        jsPDF:        { unit: 'in', format: [larguraPagina, 8.27], orientation: 'landscape' },
-        pagebreak:    { mode: ['avoid-all', 'css'] }
-      };
-      html2pdf().set(opt).from(copia).save();
+      // Mede a escala pronta para exportacao. A pagina acompanha a largura e a
+      // altura reais, evitando que colunas ou dias sejam cortados em outra pagina.
+      const areaMedicao = document.createElement('div');
+      areaMedicao.style.cssText = 'position:fixed;left:0;top:0;z-index:-1;pointer-events:none;overflow:visible;background:#fff;padding:0;';
+      areaMedicao.appendChild(copia);
+      document.body.appendChild(areaMedicao);
+
+      const tabela = copia.querySelector('table');
+      const larguraPagina = Math.ceil(Math.max(copia.scrollWidth, tabela?.scrollWidth || 0));
+      const alturaPagina = Math.ceil(copia.scrollHeight);
+      try {
+        const canvas = await html2canvas(copia, {
+          scale: 2,
+          useCORS: true,
+          scrollX: 0,
+          scrollY: 0,
+          width: larguraPagina,
+          height: alturaPagina,
+          windowWidth: larguraPagina,
+          windowHeight: alturaPagina
+        });
+        const larguraPt = larguraPagina * 0.75;
+        const alturaPt = alturaPagina * 0.75;
+        const { jsPDF } = window.jspdf;
+        const pdf = new jsPDF({
+          unit: 'pt',
+          format: [larguraPt, alturaPt],
+          orientation: larguraPt >= alturaPt ? 'landscape' : 'portrait',
+          compress: true
+        });
+        pdf.addImage(canvas.toDataURL('image/jpeg', 0.98), 'JPEG', 0, 0, larguraPt, alturaPt);
+        pdf.save(`Escala_CCI_${document.getElementById('mesAnoEscala').value}.pdf`);
+      } catch (erro) {
+        console.error('Erro ao exportar PDF:', erro);
+        alert('Nao foi possivel gerar o PDF. Verifique sua conexao e tente novamente.');
+      } finally {
+        areaMedicao.remove();
+      }
     }
 
     function exportarXLS() {

@@ -1384,7 +1384,10 @@
           };
           const militaresAtivosDaFuncao = obterMilitaresParaEscala(col.funcao);
           const efetivoDisponivelFuncao = militaresAtivosDaFuncao
-            .filter(militar => !militarEstaIndisponivel(militar.id)).length;
+            .filter(militar =>
+              !militarEstaIndisponivel(militar.id)
+              && !militarIniciaIndisponibilidadeNoDiaSeguinte(militar.id)
+            ).length;
           const indisponibilidadeAtivaFuncao = militaresAtivosDaFuncao.length > efetivoDisponivelFuncao;
           const usarDiferenciadaTemporaria = tipoFuncaoConfigurado === 'corrida'
             && indisponibilidadeAtivaFuncao
@@ -1420,10 +1423,12 @@
               && (
                 militaresAdiantadosRotacao[chaveRotacao]?.has(proximoMilitarDaRotacao.id)
                 || militarEstaIndisponivel(proximoMilitarDaRotacao.id)
+                || militarIniciaIndisponibilidadeNoDiaSeguinte(proximoMilitarDaRotacao.id)
               )
               && seguranca < militaresDaRotacao.length) {
               const militarPulando = proximoMilitarDaRotacao;
-              if (militarEstaIndisponivel(militarPulando.id)) {
+              if (militarEstaIndisponivel(militarPulando.id)
+                || militarIniciaIndisponibilidadeNoDiaSeguinte(militarPulando.id)) {
                 militaresPuladosPorIndisponibilidade.push(militarPulando.id);
               } else {
                 militaresPuladosPorAdiantamento.push(militarPulando.id);
@@ -1609,6 +1614,7 @@
             && proximoMilitarDaRotacao
             && !pendenciasRotacao[chaveRotacao]
             && !militarEstaIndisponivel(proximoMilitarDaRotacao.id)
+            && !militarIniciaIndisponibilidadeNoDiaSeguinte(proximoMilitarDaRotacao.id)
             && !candidatos.some(m => m.id === proximoMilitarDaRotacao.id)) {
             pendenciasRotacao[chaveRotacao] = proximoMilitarDaRotacao.id;
           }
@@ -1690,7 +1696,7 @@
               `Rotacao usada: ${tipoFuncao === 'semanaFimSemana' ? (servicoVermelho ? 'fim de semana/feriado' : 'dias uteis') : 'corrida'}.`
             ];
             if (usarDiferenciadaTemporaria) {
-              explicacao.push(`A funcao esta configurada como corrida, mas nesta data havia ${efetivoDisponivelFuncao} militares disponiveis por indisponibilidade cadastrada; por isso foram aplicados temporariamente os criterios da escala diferenciada.`);
+              explicacao.push(`A funcao esta configurada como corrida, mas nesta data havia ${efetivoDisponivelFuncao} militares aptos por indisponibilidade cadastrada ou inicio de indisponibilidade no dia seguinte; por isso foram aplicados temporariamente os criterios da escala diferenciada.`);
             }
             if (tipoFuncao === 'semanaFimSemana') {
               explicacao.push(`Prioridade da escolha: sequencia da rotacao; em empate, acumulado ${servicoVermelho ? 'vermelho' : 'preto'}.`);
@@ -2057,8 +2063,14 @@
       const servicoVermelhoAtual = escalaTemDiaVermelho(estado.escala, dataAtual, Number(dia));
       const formatarData = data => data.toLocaleDateString('pt-BR');
       const militaresAtivosDaFuncao = obterMilitaresParaEscala(funcao);
+      const dataSeguinte = new Date(dataAtual);
+      dataSeguinte.setDate(dataSeguinte.getDate() + 1);
+      const dataSeguinteStr = `${dataSeguinte.getFullYear()}-${String(dataSeguinte.getMonth() + 1).padStart(2, '0')}-${String(dataSeguinte.getDate()).padStart(2, '0')}`;
       const efetivoDisponivelFuncao = militaresAtivosDaFuncao
-        .filter(m => !estado.indisponibilidades.some(i => i.militarId === m.id && dataStr >= i.inicio && dataStr <= i.fim))
+        .filter(m =>
+          !estado.indisponibilidades.some(i => i.militarId === m.id && dataStr >= i.inicio && dataStr <= i.fim)
+          && !estado.indisponibilidades.some(i => i.militarId === m.id && i.inicio === dataSeguinteStr)
+        )
         .length;
       const usarDiferenciadaTemporaria = tiposEscala[funcao] === 'corrida'
         && militaresAtivosDaFuncao.length > efetivoDisponivelFuncao
@@ -2072,9 +2084,6 @@
       if (estado.indisponibilidades.some(i => i.militarId === militarId && dataStr >= i.inicio && dataStr <= i.fim)) {
         violacoes.push('militar indisponivel nesta data');
       }
-      const dataSeguinte = new Date(dataAtual);
-      dataSeguinte.setDate(dataSeguinte.getDate() + 1);
-      const dataSeguinteStr = `${dataSeguinte.getFullYear()}-${String(dataSeguinte.getMonth() + 1).padStart(2, '0')}-${String(dataSeguinte.getDate()).padStart(2, '0')}`;
       if (estado.indisponibilidades.some(i => i.militarId === militarId && i.inicio === dataSeguinteStr)) {
         violacoes.push('militar inicia indisponibilidade no dia seguinte');
       }

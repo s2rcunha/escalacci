@@ -524,28 +524,6 @@
       }
     }
 
-    // Migra a escala antiga para o histórico mensal sem perder os dados já salvos.
-    if (estado.escala.mesAno && !estado.escalas[estado.escala.mesAno]) {
-      estado.escalas[estado.escala.mesAno] = estado.escala;
-    }
-    if (!estado.diasEspeciais || typeof estado.diasEspeciais !== 'object') {
-      estado.diasEspeciais = {};
-    }
-    estado.militares.forEach(militar => {
-      if (militar.ativo === undefined) militar.ativo = true;
-      if (!militar.contagemInicialServicos || typeof militar.contagemInicialServicos !== 'object') {
-        militar.contagemInicialServicos = {};
-      }
-    });
-
-    estado.funcoes.forEach(funcao => {
-      estado.militares
-        .filter(militar => militar.funcao === funcao)
-        .forEach((militar, indice) => {
-          if (!Number.isInteger(militar.ordem)) militar.ordem = indice;
-        });
-    });
-
     function salvarEstado() {
       return gravarEstadoIndexedDB(estado).catch(erro => {
         console.error('Erro ao salvar dados no IndexedDB:', erro);

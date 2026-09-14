@@ -419,6 +419,19 @@
     </form>
   </div>
 
+  <div id="modalAuditoriaAcumulado" class="hidden fixed inset-0 z-50 items-center justify-center bg-black bg-opacity-50 p-4" onclick="fecharModalAuditoriaAcumulado(event)">
+    <div class="flex max-h-[85vh] w-full max-w-3xl flex-col rounded bg-white shadow-xl" onclick="event.stopPropagation()">
+      <div class="flex items-center justify-between border-b px-5 py-4">
+        <h3 id="tituloModalAuditoriaAcumulado" class="text-lg font-bold text-gray-800">Auditoria de acumulado</h3>
+        <button type="button" onclick="fecharModalAuditoriaAcumulado()" class="rounded bg-gray-100 px-3 py-1 text-lg font-bold text-gray-600 hover:bg-gray-200" aria-label="Fechar auditoria">x</button>
+      </div>
+      <div id="conteudoModalAuditoriaAcumulado" class="space-y-3 overflow-y-auto px-5 py-4 text-sm text-gray-700"></div>
+      <div class="flex justify-end border-t px-5 py-3">
+        <button type="button" onclick="fecharModalAuditoriaAcumulado()" class="rounded bg-red-600 px-4 py-2 text-sm font-semibold text-white hover:bg-red-700">Fechar</button>
+      </div>
+    </div>
+  </div>
+
   <script>
     // Estrutura Inicial de Dados
     const FUNCOES_PADRAO = [
@@ -849,6 +862,7 @@
           fecharModalJustificativa();
           cancelarJustificativaAlteracaoManual();
           fecharModalAjusteAcumulado();
+          fecharModalAuditoriaAcumulado();
         }
       });
     }
@@ -2476,7 +2490,10 @@
           <td class="p-2 text-center text-red-600">${ano.vermelho}</td>
           <td class="p-2 text-center font-bold">${totalAno}</td>
           <td class="p-2 text-right">
-            <button type="button" onclick="abrirModalAjusteAcumulado('${militar.id}', '${encodeURIComponent(funcaoAjuste)}')" class="rounded bg-gray-200 px-3 py-1 text-xs font-semibold text-gray-700 hover:bg-gray-300">Ajustar</button>
+            <div class="flex justify-end gap-1">
+              <button type="button" onclick="abrirModalAjusteAcumulado('${militar.id}', '${encodeURIComponent(funcaoAjuste)}')" class="rounded bg-gray-200 px-3 py-1 text-xs font-semibold text-gray-700 hover:bg-gray-300">Ajustar</button>
+              <button type="button" onclick="abrirModalAuditoriaAcumulado('${militar.id}', '${encodeURIComponent(funcaoAjuste)}')" class="rounded bg-blue-100 px-3 py-1 text-xs font-semibold text-blue-700 hover:bg-blue-200">Auditoria</button>
+            </div>
           </td>
         </tr>`;
       }).join('');
@@ -2566,6 +2583,101 @@
       salvarEstado();
       fecharModalAjusteAcumulado();
       renderizarResumoServicos();
+    }
+
+    function formatarDataHoraAuditoria(valor) {
+      if (!valor) return 'Data nao registrada';
+      const data = new Date(valor);
+      return Number.isNaN(data.getTime()) ? valor : data.toLocaleString('pt-BR');
+    }
+
+    function criarLinhaAuditoria(rotulo, valor) {
+      const linha = document.createElement('p');
+      const forte = document.createElement('strong');
+      forte.textContent = `${rotulo}: `;
+      linha.appendChild(forte);
+      linha.appendChild(document.createTextNode(valor));
+      return linha;
+    }
+
+    function abrirModalAuditoriaAcumulado(militarId, funcaoCodificada) {
+      const funcao = decodeURIComponent(funcaoCodificada);
+      const militar = estado.militares.find(m => m.id === militarId);
+      if (!militar) return;
+
+      const auditorias = (militar.auditoriaAjustesAcumulado || [])
+        .filter(registro => registro.funcao === funcao)
+        .slice()
+        .reverse();
+
+      document.getElementById('tituloModalAuditoriaAcumulado').textContent =
+        `Auditoria - ${militar.nome} (${militar.saram})`;
+
+      const container = document.getElementById('conteudoModalAuditoriaAcumulado');
+      container.innerHTML = '';
+
+      const cabecalho = document.createElement('p');
+      cabecalho.className = 'font-semibold text-gray-800';
+      cabecalho.textContent = `Funcao: ${funcao}`;
+      container.appendChild(cabecalho);
+
+      if (auditorias.length === 0) {
+        const vazio = document.createElement('p');
+        vazio.className = 'rounded border border-gray-200 bg-gray-50 p-3 text-gray-500';
+        vazio.textContent = 'Nao ha ajuste manual de acumulado registrado para este militar nesta funcao.';
+        container.appendChild(vazio);
+      } else {
+        auditorias.forEach((registro, indice) => {
+          const bloco = document.createElement('div');
+          bloco.className = 'rounded border border-gray-200 bg-gray-50 p-3';
+
+          const titulo = document.createElement('p');
+          titulo.className = 'mb-2 font-bold text-gray-800';
+          titulo.textContent = `Ajuste ${auditorias.length - indice}`;
+          bloco.appendChild(titulo);
+
+          bloco.appendChild(criarLinhaAuditoria('Data e hora', formatarDataHoraAuditoria(registro.dataHora)));
+          bloco.appendChild(criarLinhaAuditoria('Referencia', registro.mesReferencia || 'Sem mes selecionado'));
+          bloco.appendChild(criarLinhaAuditoria(
+            'Valores anteriores',
+            `${registro.anterior?.preto ?? 0} preto(s), ${registro.anterior?.vermelho ?? 0} vermelho(s)`
+          ));
+          bloco.appendChild(criarLinhaAuditoria(
+            'Valores novos',
+            `${registro.novo?.preto ?? 0} preto(s), ${registro.novo?.vermelho ?? 0} vermelho(s)`
+          ));
+          bloco.appendChild(criarLinhaAuditoria(
+            'Diferenca aplicada',
+            `${registro.ajusteNovo?.preto ?? 0} preto(s), ${registro.ajusteNovo?.vermelho ?? 0} vermelho(s)`
+          ));
+          bloco.appendChild(criarLinhaAuditoria('Justificativa', registro.motivo || 'Nao informada'));
+          bloco.appendChild(criarLinhaAuditoria(
+            'Responsavel',
+            `${registro.responsavelNome || 'Nao informado'} (SARAM: ${registro.responsavelSaram || 'Nao informado'})`
+          ));
+
+          container.appendChild(bloco);
+        });
+      }
+
+      const ajusteAtual = militar.ajustesAcumuladoServicos?.[funcao];
+      if (ajusteAtual) {
+        const rodape = document.createElement('p');
+        rodape.className = 'text-xs text-gray-500';
+        rodape.textContent = `Ajuste manual atualmente aplicado: ${normalizarNumeroAjuste(ajusteAtual.preto)} preto(s), ${normalizarNumeroAjuste(ajusteAtual.vermelho)} vermelho(s).`;
+        container.appendChild(rodape);
+      }
+
+      const modal = document.getElementById('modalAuditoriaAcumulado');
+      modal.classList.remove('hidden');
+      modal.classList.add('flex');
+    }
+
+    function fecharModalAuditoriaAcumulado(evento) {
+      if (evento && evento.target.id !== 'modalAuditoriaAcumulado') return;
+      const modal = document.getElementById('modalAuditoriaAcumulado');
+      modal.classList.add('hidden');
+      modal.classList.remove('flex');
     }
 
     function renderizarFiltroResumo() {

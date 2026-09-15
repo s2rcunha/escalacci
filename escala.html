@@ -100,13 +100,6 @@
     <!-- ABA 1: GERADOR E VISUALIZAÇÃO DA ESCALA -->
     <section id="aba-gerador" class="aba-conteudo space-y-4">
       <div class="bg-white p-4 rounded shadow-sm flex flex-wrap gap-4 items-end justify-between">
-        <div class="flex gap-4 items-center">
-          <div>
-            <label class="block text-xs font-semibold text-gray-600 mb-1">Mês/Ano</label>
-            <input type="month" id="mesAnoEscala" onchange="renderizarDiasEspeciais(); renderizarTabelaEscala()" class="border p-2 rounded text-sm">
-          </div>
-          <button onclick="gerarEscalaAutomatica()" class="bg-green-600 hover:bg-green-700 text-white px-5 py-2 rounded font-bold shadow">⚡ Gerar Escala Automática</button>
-        </div>
         <div class="flex gap-2">
           <button onclick="exportarPDF()" class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded text-sm font-semibold">📄 Exportar PDF</button>
           <button onclick="exportarXLS()" class="bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2 rounded text-sm font-semibold">Exportar XLS</button>
@@ -118,12 +111,11 @@
       </div>
 
       <div class="bg-white p-4 rounded shadow-sm">
-        <h3 class="font-bold text-sm mb-3">Tipo de escala por função</h3>
-        <div id="listaTiposEscala" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3"></div>
-      </div>
-
-      <div class="bg-white p-4 rounded shadow-sm">
-        <h3 class="font-bold text-sm mb-3">Feriados e dias sem expediente do mes - Considerado vermelha</h3>
+        <div class="mb-4">
+          <label class="block text-xs font-semibold text-gray-600 mb-1">Mês/Ano</label>
+          <input type="month" id="mesAnoEscala" onchange="renderizarDiasEspeciais(); renderizarTabelaEscala()" class="border p-2 rounded text-sm">
+        </div>
+        <h3 class="font-bold text-sm mb-3">Feriados e dias sem expediente do mês</h3>
         <form onsubmit="salvarDiaEspecial(event)" class="flex flex-wrap gap-3 items-end mb-3">
           <div>
             <label class="block text-xs font-semibold text-gray-600 mb-1">Data</label>
@@ -136,6 +128,13 @@
           <button class="bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded text-sm font-semibold">Adicionar</button>
         </form>
         <div id="listaDiasEspeciais" class="flex flex-wrap gap-2 text-sm"></div>
+        <details class="mt-4">
+          <summary class="cursor-pointer text-sm font-semibold text-gray-700">Editar tipos de escala por função</summary>
+          <div id="listaTiposEscala" class="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3"></div>
+        </details>
+        <div class="mt-4 flex justify-end">
+          <button onclick="gerarEscalaAutomatica()" class="bg-green-600 hover:bg-green-700 text-white px-5 py-2 rounded font-bold shadow">Gerar Escala Automática</button>
+        </div>
       </div>
 
       <div id="areaEscalaPDF" class="bg-white p-6 rounded shadow-sm overflow-x-auto">
@@ -885,7 +884,7 @@
       const container = document.getElementById('listaTiposEscala');
       if (!container) return;
 
-      const tipos = tiposSalvos || {};
+      const tipos = tiposSalvos || obterTiposEscalaSelecionados();
       container.innerHTML = estado.funcoes.map((funcao, indice) => `
         <label class="flex flex-col gap-1 border rounded p-3 bg-gray-50">
           <span class="text-xs font-semibold text-gray-700">${funcao}</span>
@@ -2040,12 +2039,15 @@
               const dadosB = obterDadosCandidato(b);
 
               // Score: Prioriza maior folga, menor total de serviços e menor repetição no dia da semana
-              const scoreA = (dadosA.folga * 10) - (dadosA.contagemJustica * 15) - (dadosA.repeticoesDiaSemana * 20);
-              const scoreB = (dadosB.folga * 10) - (dadosB.contagemJustica * 15) - (dadosB.repeticoesDiaSemana * 20);
-              if (usarJusticaAnualPorCor && dadosA.contagemJustica !== dadosB.contagemJustica) {
+              if (!usarJusticaAnualPorCor) {
+                return dadosA.distancia - dadosB.distancia;
+              }
+              if (dadosA.contagemJustica !== dadosB.contagemJustica) {
                 return dadosA.contagemJustica - dadosB.contagemJustica;
               }
               if (dadosA.distancia !== dadosB.distancia) return dadosA.distancia - dadosB.distancia;
+              const scoreA = (dadosA.folga * 10) - (dadosA.contagemJustica * 15) - (dadosA.repeticoesDiaSemana * 20);
+              const scoreB = (dadosB.folga * 10) - (dadosB.contagemJustica * 15) - (dadosB.repeticoesDiaSemana * 20);
               return scoreB - scoreA;
             });
 
@@ -2073,7 +2075,7 @@
             if (tipoFuncao === 'semanaFimSemana') {
               explicacao.push(`Prioridade da escolha: menor acumulado ${servicoVermelho ? 'vermelho' : 'preto'}; em empate, sequencia da rotacao.`);
             } else {
-              explicacao.push('Prioridade da escolha: sequencia da rotacao; depois, maior folga, menor total de servicos no mes e menor repeticao no mesmo dia da semana.');
+              explicacao.push('Prioridade da escolha: sequencia da rotacao entre os militares que atendem as regras do servico.');
             }
             const houvePulosAutomaticos = militaresPuladosPorAdiantamento.length > 0 || militaresPuladosPorIndisponibilidade.length > 0;
             if (houvePulosAutomaticos) {
@@ -2121,11 +2123,11 @@
                 }
                 explicacao.push(tipoFuncao === 'semanaFimSemana'
                   ? `Por isso, o sistema escolheu o candidato valido com menor acumulado de servico ${servicoVermelho ? 'vermelho' : 'preto'}; em empate, usou a sequencia da rotacao.`
-                  : 'Por isso, o sistema avancou na lista e escolheu o primeiro candidato valido conforme a rotacao e os criterios de equilibrio.');
+                  : 'Por isso, o sistema avancou na lista e escolheu o primeiro candidato valido conforme a sequencia da rotacao.');
               } else {
                 explicacao.push(tipoFuncao === 'semanaFimSemana'
                   ? 'O proximo da rotacao estava valido, mas outro candidato foi escolhido por ter menor acumulado de servicos desta cor nesta funcao.'
-                  : 'O proximo da rotacao estava valido, mas outro candidato foi escolhido pelos criterios de folga e equilibrio do mes.');
+                  : 'O proximo da rotacao estava valido, mas outro candidato foi escolhido conforme a sequencia registrada da rotacao.');
               }
             }
             if (excecaoVermelhaConsecutiva && ultimoServicoFoiVermelhoPorMilitar[escolhido.id]) {
@@ -2469,10 +2471,15 @@
       const cabecalho = document.getElementById('cabecalhoTabelaEscala');
       const corpo = document.getElementById('corpoTabelaEscala');
 
+      const tiposSelecionados = obterTiposEscalaSelecionados();
       if (mesAno && estado.escalas[mesAno]) {
         estado.escala = estado.escalas[mesAno];
+      } else {
+        estado.escala = {};
       }
-      const tiposEscalaRender = obterTiposEscalaDaEscala(estado.escala);
+      const tiposEscalaRender = estado.escala.mesAno === mesAno
+        ? obterTiposEscalaDaEscala(estado.escala)
+        : tiposSelecionados;
       renderizarTiposEscala(tiposEscalaRender);
 
       if (!mesAno || !estado.escala.dados || estado.escala.mesAno !== mesAno) {
@@ -3286,13 +3293,27 @@
       filtro.value = estado.funcoes.includes(valorAtual) ? valorAtual : '';
     }
 
-    function limparEscala() {
-      if (confirm('Deseja realmente limpar a escala atual?')) {
-        if (estado.escala.mesAno) delete estado.escalas[estado.escala.mesAno];
-        estado.escala = {};
-        salvarEstado();
-        renderizarTabelaEscala();
+    async function limparEscala() {
+      const mesAnoAtual = document.getElementById('mesAnoEscala')?.value || '';
+      if (!mesAnoAtual || !estado.escalas?.[mesAnoAtual]) {
+        alert('Nao ha escala gerada para o mes selecionado.');
+        return;
       }
+      const mesesFuturosGerados = mesAnoAtual ? obterMesesFuturosGerados(mesAnoAtual) : [];
+      const avisoEscalasFuturas = mesesFuturosGerados.length > 0
+        ? `\n\nATENCAO: ja existem escalas futuras geradas apos ${formatarMesAno(mesAnoAtual)}.\n\n`
+          + `Ao limpar esta escala, as seguintes escalas futuras tambem serao excluidas e deverao ser geradas novamente: ${mesesFuturosGerados.map(formatarMesAno).join(', ')}.`
+        : '';
+
+      if (!confirm(`Deseja realmente limpar a escala atual?${avisoEscalasFuturas}`)) return;
+
+      delete estado.escalas[mesAnoAtual];
+      mesesFuturosGerados.forEach(mesEscala => {
+        delete estado.escalas[mesEscala];
+      });
+      estado.escala = {};
+      await salvarEstado();
+      renderizarTabelaEscala();
     }
 
     function exportarBancoDados() {

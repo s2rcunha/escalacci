@@ -2797,9 +2797,9 @@
         if (servico.mesmaVagaEditada) return;
         const diferencaDias = Math.abs(Math.round((dataAtual.getTime() - servico.tempo) / 86400000));
         if (diferencaDias === 1) {
-          violacoes.push(`dias consecutivos com ${formatarData(servico.data)}`);
+          violacoes.push(`dobraria serviço em ${formatarData(servico.data)}`);
         } else if (diferencaDias === 2) {
-          violacoes.push(`sem folga completa depois de sair de servico em relacao a ${formatarData(servico.data)}`);
+          violacoes.push(`ficaria na 24 em relação a ${formatarData(servico.data)}`);
         } else if (diferencaDias === 3) {
           violacoes.push(`apenas uma folga depois de sair de servico em relacao a ${formatarData(servico.data)}`);
         }
